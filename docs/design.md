@@ -61,6 +61,7 @@ One-way `Link<T>` driven by **sim time**, so results don't depend on how fast th
   - approach controller that matches the slot's velocity and orbits around the payload when it's in the way;
   - **carry law**: every gripping robot runs the same law on the same estimate, so the swarm agrees without talking. Translation uses a feed-forward + P term toward the waypoint, scaled down while the heading error is large (turn first, then move). Steerers (grip points far from the centre) add a tangential term for heading control.
   - **reflex mode** (no valid tree): grab the nearest free point and push straight at the goal beacon.
+  - **parked mode**: at the end of its plan, gripping a payload that's within 1 m of its goal, a robot parks. It holds, sends a heartbeat every 5 s instead of every second, and no longer depends on its lease. The edge stops replanning delivered teams and stops renewing parked robots' leases. In the centralized baseline the edge stops commanding parked robots, and robots that hear nothing for 1 s slow their state reports to 1 Hz. After delivery the radio drops to about 1 B/robot/s (speculative) and 16 B/robot/s (centralized).
 
 ### 3.4 `antlift-edge`: the edge server
 - **Planner**: holonomic SE(2) A* over (0.25 m cell, 16 headings over π). Clearance is computed exactly from obstacle geometry. The footprint (payload plus gripping robots) is a chain of circles. A 2D geometric distance-to-goal field is the admissible heuristic and also prunes cells that can't reach the goal. Moves that increase clearance are allowed even from a colliding pose, so a payload shoved against a wall can still be planned out. Cells with little slack cost extra, which keeps plans centred in gaps. Typical plan: about 30 ms.
@@ -113,12 +114,12 @@ Three variants: **speculative** (ghost futures), **speculative-heuristic** (the 
 
 | Condition | Speculative | Speculative, heuristic | Centralized |
 |---|---|---|---|
-| clean | 10/10 · 82.8 ± 10.4 · 47 | 10/10 · 83.0 ± 10.4 · 48 | 10/10 · 74.3 ± 3.2 · 447 |
-| slow (150 ms) | 10/10 · 78.3 ± 3.0 · 47 | 10/10 · 78.5 ± 2.9 · 48 | 10/10 · 74.8 ± 3.3 · 446 |
-| lossy (20%) | 10/10 · 75.1 ± 2.1 · 67 | 10/10 · 75.2 ± 2.0 · 68 | 10/10 · 71.9 ± 2.5 · 447 |
-| slow + lossy | 10/10 · 81.0 ± 4.3 · 64 | 10/10 · 81.5 ± 4.2 · 66 | 10/10 · 78.5 ± 3.8 · 447 |
-| disrupted | 10/10 · 85.9 ± 7.4 · 46 | 10/10 · 87.3 ± 8.5 · 47 | 10/10 · 78.1 ± 2.4 · 448 |
-| 10 s edge outage | 10/10 · 84.1 ± 6.5 · 45 | 10/10 · 83.6 ± 7.1 · 46 | 10/10 · 84.8 ± 4.2 · 432 |
+| clean | 10/10 · 82.8 ± 10.4 · 47 | 10/10 · 83.0 ± 10.4 · 48 | 10/10 · 72.9 ± 2.3 · 438 |
+| slow (150 ms) | 10/10 · 78.3 ± 3.0 · 47 | 10/10 · 78.5 ± 2.9 · 48 | 10/10 · 75.5 ± 4.4 · 438 |
+| lossy (20%) | 10/10 · 75.1 ± 2.1 · 67 | 10/10 · 75.2 ± 2.0 · 68 | 10/10 · 73.8 ± 3.2 · 438 |
+| slow + lossy | 10/10 · 81.0 ± 4.3 · 64 | 10/10 · 81.5 ± 4.2 · 66 | 10/10 · 77.0 ± 2.4 · 438 |
+| disrupted | 10/10 · 85.9 ± 7.4 · 46 | 10/10 · 87.3 ± 8.5 · 47 | 10/10 · 77.0 ± 0.9 · 439 |
+| 10 s edge outage | 10/10 · 84.1 ± 6.5 · 45 | 10/10 · 83.6 ± 7.1 · 46 | 10/10 · 82.6 ± 2.3 · 390 |
 
 Full tables, including both sweeps for all three variants, are in `results/summary.md`.
 
@@ -127,11 +128,11 @@ Full tables, including both sweeps for all three variants, are in `results/summa
 ![Outage sweep](img/outage.png)
 
 ### 4.3 What the data supports
-1. **7-10× less radio traffic for the same task.** Speculative uses 45-68 B/robot/s against about 440 for centralized. Every variant succeeds 10/10 in every condition. On a good link centralized is a few seconds faster (for example 74.3 vs 82.8 s clean), because it reacts to everything at 20 Hz with the full picture.
-2. **Latency tolerance is the decisive difference.** Speculative time to goal stays within 76-87 s from 0 to 1000 ms of one-way latency (10/10 at every point). Centralized slows from 200 ms (84 s), takes 136 s at 300 ms, and succeeds in only 5/10 runs at 500 ms, 2/10 at 750 ms and 0/10 at 1000 ms. The hall's three turns make remote control break down sooner than the old single doorway did.
-3. **Outages:** every variant recovers in every run, up to 40 s offline, within about 3 s of each other.
+1. **7-10× less radio traffic for the same task.** Speculative uses 45-68 B/robot/s against 390-440 for centralized. Every variant succeeds 10/10 in every condition. On a good link centralized is a few seconds faster (for example 72.9 vs 82.8 s clean), because it reacts to everything at 20 Hz with the full picture.
+2. **Latency tolerance is the decisive difference.** Speculative time to goal stays within 76-87 s from 0 to 1000 ms of one-way latency (10/10 at every point). Centralized slows from 200 ms (84 s), takes 139 s at 300 ms, and succeeds in only 4/10 runs at 500 ms, 2/10 at 750 ms and 0/10 at 1000 ms. The hall's three turns make remote control break down sooner than the old single doorway did.
+3. **Outages:** every variant recovers in every run, up to 40 s offline. Times are within about 5 s of each other, with centralized slightly ahead.
 4. **Ghost futures don't help.** On the hall they are within noise of heuristic priors. In the warehouse (section 4.6) they are slower. Simulating futures also costs compute: about 25 ms per plan per team, and most of the benchmark's CPU.
-5. **Centralized is also faster when disrupted** (78.1 vs 85.9 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
+5. **Centralized is also faster when disrupted** (77.0 vs 85.9 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
 
 ### 4.4 What the data does *not* support (yet)
 - Two levels: the assembly hall with one payload, and the warehouse with three. Larger swarms and other layouts are untested.
@@ -170,18 +171,21 @@ Same three variants, 10 seeds per condition (start poses jittered ±0.5 m, ±0.2
 
 | Condition | Speculative | Speculative, heuristic | Centralized |
 |---|---|---|---|
-| clean | 10/10 · 122.0 ± 8.5 · 47 | 10/10 · 116.3 ± 8.2 · 50 | 9/10 · 119.0 ± 11.8 · 448 |
-| slow (150 ms) | 10/10 · 126.7 ± 9.8 · 47 | 10/10 · 114.5 ± 7.0 · 51 | 10/10 · 165.6 ± 20.4 · 445 |
-| lossy (20%) | 10/10 · 128.3 ± 14.2 · 65 | 10/10 · 110.9 ± 4.4 · 71 | 10/10 · 150.0 ± 54.9 · 449 |
-| attrition (1 in 4 robots die at 40 s) | 10/10 · 135.0 ± 15.5 · 40 | 10/10 · 128.5 ± 10.2 · 42 | 10/10 · 140.3 ± 22.3 · 366 |
-| 15 s edge outage at 40 s | 10/10 · 134.2 ± 11.9 · 43 | 10/10 · 122.4 ± 11.8 · 46 | 10/10 · 140.8 ± 18.0 · 432 |
+| clean | 10/10 · 121.9 ± 8.6 · 45 | 10/10 · 116.0 ± 8.1 · 48 | 10/10 · 118.8 ± 9.6 · 386 |
+| slow (150 ms) | 10/10 · 129.5 ± 11.3 · 43 | 10/10 · 113.3 ± 6.0 · 48 | 10/10 · 154.2 ± 17.0 · 371 |
+| lossy (20%) | 10/10 · 129.8 ± 16.2 · 60 | 10/10 · 111.3 ± 4.5 · 68 | 10/10 · 114.8 ± 8.4 · 386 |
+| attrition (1 in 4 robots die at 40 s) | 10/10 · 135.0 ± 15.6 · 39 | 10/10 · 128.5 ± 10.2 · 41 | 10/10 · 126.2 ± 10.9 · 343 |
+| 15 s edge outage at 40 s | 10/10 · 134.9 ± 12.9 · 40 | 10/10 · 122.5 ± 11.9 · 43 | 10/10 · 128.9 ± 7.8 · 346 |
 
 ![Warehouse](img/warehouse.png)
 
 What it shows:
 1. **Coordination works in every variant.** Teams queue for doors, nobody deadlocks, and delivered teams lend robots only where a grip spot is free.
-2. **Speculative with heuristic priors is the best performer here:** 50/50 runs, the fastest times in every condition (111-129 s), almost no surprises (0-5 per run), and about 8× less radio than centralized (42-71 vs 366-449 B/robot/s).
-3. **Ghost futures (50/50) are slower than heuristic priors** (122-135 s, for example 128 vs 111 s on the lossy link). **Centralized (49/50) is slowest under bad links** (166 s slow, 150 s lossy) and has one failed run.
+2. **Every variant delivers in every run (50/50).**
+3. **Speculative with heuristic priors is fastest in four of five conditions** (111-123 s), with almost no surprises (0-5 per run) and 7-9× less radio than centralized (41-68 vs 343-386 B/robot/s). Under attrition centralized is marginally faster (126 vs 129 s, within noise).
+4. **Centralized is slowest on the slow link** (154 s), where its 20 Hz loop suffers most. **Ghost futures are slower than heuristic priors** throughout (122-135 s).
+
+Parking (robots holding a delivered payload go quiet, section 3.3) cut centralized radio from about 445 to 343-386 B/robot/s here, because delivered teams no longer receive streamed commands; it also made centralized faster and more reliable (it was 49/50).
 
 These numbers are after the multi-team routing and lending fixes in section 4.8. Before them, centralized was the most reliable (50/50) and speculative failed 2-3 runs in 50, mostly by wedging in the dispatch doorway.
 

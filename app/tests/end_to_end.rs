@@ -74,3 +74,38 @@ fn switching_modes_mid_run_still_delivers() {
         "centralized phase never ran"
     );
 }
+
+#[test]
+fn delivered_robots_park_and_the_radio_goes_quiet() {
+    for control in [ControlMode::Speculative, ControlMode::Centralized] {
+        let (mut s, reached) = run(control, true, 150.0);
+        assert!(reached.is_some(), "{control:?}: not delivered");
+        // Give the robots a moment to settle, then measure a quiet window.
+        for _ in 0..(5.0 * 60.0) as usize {
+            s.step(1.0 / 60.0);
+        }
+        let parked = s
+            .swarm
+            .brains
+            .iter()
+            .filter(|b| b.mode() == antlift_sim::Mode::Parked)
+            .count();
+        let before = s.radio.up_bytes + s.radio.down_bytes;
+        for _ in 0..(10.0 * 60.0) as usize {
+            s.step(1.0 / 60.0);
+        }
+        let per_robot_s = (s.radio.up_bytes + s.radio.down_bytes - before) as f32
+            / s.swarm.brains.len() as f32
+            / 10.0;
+        if control == ControlMode::Speculative {
+            assert!(
+                parked * 2 >= s.swarm.brains.len(),
+                "only {parked} robots parked"
+            );
+        }
+        assert!(
+            per_robot_s < 20.0,
+            "{control:?}: still {per_robot_s:.1} B/robot/s after delivery"
+        );
+    }
+}

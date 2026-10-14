@@ -4,7 +4,7 @@ pub mod world;
 
 use antlift_core::{
     track, Brain, Command, ControlMode, DownBody, Downlink, Layout, RobotObs, Sense, Snapshot,
-    Uplink,
+    Uplink, DELIVERED_RADIUS,
 };
 pub use antlift_core::{Event, Mode};
 pub use world::SimWorld;
@@ -13,6 +13,9 @@ pub use world::SimWorld;
 const STATE_PERIOD: f32 = 0.05;
 /// Centralized mode: stop if no command arrived for this long.
 const COMMAND_TIMEOUT: f32 = 0.3;
+/// Centralized mode: a robot the edge has stopped commanding (e.g. parked
+/// at the goal) only reports its state this often.
+const IDLE_STATE_PERIOD: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SwarmStats {
@@ -142,7 +145,13 @@ impl Swarm {
                 }
                 ControlMode::Centralized => {
                     if self.t >= self.next_state[i] {
-                        self.next_state[i] += STATE_PERIOD;
+                        let idle = self.remote[i].is_some_and(|(_, at)| self.t - at > 1.0);
+                        self.next_state[i] = self.t
+                            + if idle {
+                                IDLE_STATE_PERIOD
+                            } else {
+                                STATE_PERIOD
+                            };
                         up.push(Uplink::State {
                             robot: i as u16,
                             pos: sense.pos,
@@ -220,7 +229,7 @@ impl Swarm {
             .object_state(k)
             .pos
             .dist(self.layout.payloads[k].goal)
-            < 1.0
+            < DELIVERED_RADIUS
     }
 
     /// Every payload is at its goal.

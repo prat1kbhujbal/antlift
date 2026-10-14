@@ -17,20 +17,35 @@ pub struct Pane {
     pub session: Session,
     /// Per robot: (event, seconds left to show it).
     pub flashes: Vec<Option<(Event, f32)>>,
+    /// When every payload had been delivered (the last first arrival).
     pub reached_at: Option<f32>,
+    /// First arrival of each payload at its goal.
+    deliveries: Vec<Option<f32>>,
+    /// The run is over: the simulation no longer advances.
+    pub frozen: bool,
 }
+
+/// After the last delivery, keep simulating this long so robots can settle
+/// and park, then freeze the run.
+const SETTLE: f32 = 3.0;
 
 impl Pane {
     pub fn new(session: Session) -> Self {
         let n = session.swarm.brains.len();
+        let payloads = session.swarm.layout.payloads.len();
         Self {
             session,
             flashes: vec![None; n],
             reached_at: None,
+            deliveries: vec![None; payloads],
+            frozen: false,
         }
     }
 
     pub fn step(&mut self, dt: f32) {
+        if self.frozen {
+            return;
+        }
         self.session.step(dt);
         for (i, e) in self.session.swarm.last_events.iter().enumerate() {
             if let Some(e) = e {
@@ -42,8 +57,18 @@ impl Pane {
                 }
             }
         }
-        if self.reached_at.is_none() && self.session.swarm.at_goal() {
-            self.reached_at = Some(self.session.t());
+        let t = self.session.t();
+        for (k, d) in self.deliveries.iter_mut().enumerate() {
+            if d.is_none() && self.session.swarm.delivered(k) {
+                *d = Some(t);
+            }
+        }
+        if self.reached_at.is_none() && self.deliveries.iter().all(|d| d.is_some()) {
+            self.reached_at = Some(t);
+        }
+        if self.reached_at.is_some_and(|r| t - r > SETTLE) {
+            self.frozen = true;
+            self.session.tx.clear(); // nothing is in the air any more
         }
     }
 }
@@ -126,6 +151,7 @@ pub mod theme {
     pub const MISS: Color = rgb(0xff, 0x40, 0x40);
     pub const PATH: Color = Color::new(0.40, 0.90, 0.90, 0.35);
     pub const RISK: Color = rgb(0xff, 0xb3, 0x40);
+    pub const PARKED: Color = rgb(0x8f, 0xd6, 0x9a);
     pub const GHOST: Color = rgb(0xa8, 0xd8, 0xff);
 
     pub fn alpha(c: Color, a: f32) -> Color {

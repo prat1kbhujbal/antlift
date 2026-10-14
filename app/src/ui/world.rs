@@ -96,6 +96,8 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
             DEAD
         } else if s.control == ControlMode::Centralized {
             REMOTE
+        } else if b.mode() == Mode::Parked {
+            PARKED
         } else if b.mode() == Mode::Reflex {
             REFLEX
         } else if b.role() == Some(Role::Steerer) {
@@ -121,6 +123,30 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
     if ov.packets {
         draw_packets(pane, v, now);
     }
+    if let Some(t) = pane.reached_at {
+        draw_delivered_banner(v, t, layout.payloads.len(), pane.frozen);
+    }
+}
+
+/// "Delivered" banner across the top of the world view.
+fn draw_delivered_banner(v: &View, t: f32, payloads: usize, frozen: bool) {
+    let title = if payloads > 1 {
+        format!("ALL {payloads} PAYLOADS DELIVERED")
+    } else {
+        "DELIVERED".to_string()
+    };
+    let sub = if frozen {
+        format!("in {t:.1} s  ·  run finished, robots parked  ·  R to restart")
+    } else {
+        format!("in {t:.1} s  ·  robots parking...")
+    };
+    let w = super::text_width(&title, 34.0).max(super::text_width(&sub, 17.0)) + 40.0;
+    let x = v.rect.x + (v.rect.w - w) / 2.0;
+    let y = v.rect.y + 18.0;
+    draw_rectangle(x, y, w, 70.0, alpha(BG, 0.88));
+    draw_rectangle_lines(x, y, w, 70.0, 2.0, HIT);
+    draw_text(&title, x + 20.0, y + 34.0, 34.0, HIT);
+    draw_text(&sub, x + 20.0, y + 58.0, 17.0, TEXT);
 }
 
 /// Choke points: free ones faint, reserved ones amber with their owner.

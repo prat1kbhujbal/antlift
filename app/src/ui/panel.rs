@@ -70,7 +70,7 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
     };
     let goal = pane
         .reached_at
-        .map_or(String::new(), |t| format!("   goal at {t:.1} s"));
+        .map_or(String::new(), |t| format!("   delivered at {t:.1} s"));
     c.line(&format!("t = {:.1} s{goal}", s.t()), 18.0, TEXT);
     c.line(&format!("edge {}", edge_state.0), 18.0, edge_state.1);
     c.line(
@@ -123,18 +123,20 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
         );
     }
     if s.control == ControlMode::Speculative {
-        let (mut on_tree, mut reflex, mut dead) = (0, 0, 0);
+        let (mut on_tree, mut parked, mut reflex, mut dead) = (0, 0, 0, 0);
         for (i, b) in s.swarm.brains.iter().enumerate() {
             if !s.swarm.world.robots[i].active {
                 dead += 1;
-            } else if b.mode() == Mode::Tree {
-                on_tree += 1;
             } else {
-                reflex += 1;
+                match b.mode() {
+                    Mode::Tree => on_tree += 1,
+                    Mode::Parked => parked += 1,
+                    Mode::Reflex => reflex += 1,
+                }
             }
         }
         c.line(
-            &format!("robots: {on_tree} on tree, {reflex} reflex, {dead} dead"),
+            &format!("robots: {on_tree} on tree, {parked} parked, {reflex} reflex, {dead} dead"),
             18.0,
             TEXT,
         );
@@ -168,11 +170,12 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
 fn legend(c: &mut Col) {
     c.gap(4.0);
     c.line("LEGEND", 15.0, FAINT);
-    let items: [(Color, &str); 10] = [
+    let items: [(Color, &str); 11] = [
         (PUSHER, "pusher"),
         (STEERER, "steerer"),
         (REFLEX, "reflex, no tree"),
         (REMOTE, "remote-controlled"),
+        (PARKED, "parked (delivered)"),
         (SPEC, "tree packet"),
         (CENT, "command packet"),
         (DIM, "status packet"),
@@ -214,9 +217,9 @@ pub fn pane_header(rect: Rect, pane: &Pane) {
     let s = &pane.session;
     let color = mode_color(s.control);
     draw_rectangle(rect.x, rect.y, 6.0, rect.h, color);
-    let goal = pane
-        .reached_at
-        .map_or("on the way".to_string(), |t| format!("goal at {t:.1} s"));
+    let goal = pane.reached_at.map_or("on the way".to_string(), |t| {
+        format!("delivered at {t:.1} s")
+    });
     let text = format!(
         "{}   ·   {goal}   ·   {:.0} B/robot/s   ·   {} hits, {} surprises",
         mode_name(s.control).to_uppercase(),

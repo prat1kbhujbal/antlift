@@ -21,8 +21,8 @@ pub mod rollout;
 
 use antlift_core::{
     axis_error, Aabb, Action, Brain, ContingencyTree, ControlMode, DownBody, Downlink, Edge, Event,
-    Layout, Node, NodeId, ObjectState, Predicate, Role, Sense, Snapshot, Uplink, ROBOT_RADIUS,
-    SLOT_OFFSET, V2,
+    Layout, Mode, Node, NodeId, ObjectState, Predicate, Role, Sense, Snapshot, Uplink,
+    DELIVERED_RADIUS, ROBOT_RADIUS, SLOT_OFFSET, V2,
 };
 use grid::{Footprint, Grid, Pose};
 use rollout::Ghost;
@@ -166,6 +166,8 @@ pub struct EdgeStats {
 struct RobotBook {
     active: bool,
     attached: bool,
+    /// Tree node from the robot's last heartbeat.
+    reported_node: NodeId,
     team: usize,
     slot: Option<V2>,
     sent_version: u32,
@@ -247,8 +249,6 @@ const EXTEND_WITHIN: f32 = 5.0;
 /// ...but no more often than this (s), so a borderline distance can't make
 /// it replan on every camera frame.
 const EXTEND_GAP: f32 = 2.0;
-/// Payload counts as delivered within this distance of its goal (m).
-const DELIVERED: f32 = 1.0;
 /// Surprises replan a team at most this often, so recoveries get to run (s).
 const SURPRISE_REPLAN_GAP: f32 = 2.0;
 /// Remember this many jam spots per team.
@@ -265,6 +265,7 @@ impl EdgeServer {
                 RobotBook {
                     active: true,
                     attached: false,
+                    reported_node: 0,
                     team,
                     slot: None,
                     sent_version: 0,
@@ -379,13 +380,16 @@ impl EdgeServer {
         match msg {
             Uplink::Camera(s) => self.on_snapshot(s),
             Uplink::Heartbeat {
-                robot, attached, ..
+                robot,
+                attached,
+                node,
             } => {
                 if let Some(r) = self.robots.get_mut(robot as usize) {
                     if r.attached && !attached {
                         self.stats.grip_losses += 1;
                     }
                     r.attached = attached;
+                    r.reported_node = node;
                 }
             }
             Uplink::BranchFired {
@@ -477,7 +481,9 @@ impl EdgeServer {
                 self.teams[k].need_replan = true;
                 self.teams[k].pending_surprise = false;
             }
-            if self.teams[k].need_replan || self.teams[k].plan.is_none() {
+            // A delivered team's job is done: no more plans for it.
+            let done = self.teams[k].delivered && self.teams[k].plan.is_some();
+            if !done && (self.teams[k].need_replan || self.teams[k].plan.is_none()) {
                 self.teams[k].last_plan_t = now;
                 self.replan(k);
             }
@@ -517,7 +523,10 @@ impl EdgeServer {
                 });
                 continue;
             }
-            if current && since < self.cfg.refresh {
+            // Robots of a delivered team that report they're at the end of
+            // their plan are parked: they keep holding without a lease.
+            let parked = self.teams[team].delivered && r.reported_node == r.end_node;
+            if current && (since < self.cfg.refresh || parked) {
                 continue;
             }
 
@@ -589,6 +598,9 @@ impl EdgeServer {
             let Some(st) = r.state.filter(|_| r.active) else {
                 continue;
             };
+            if r.brain.mode() == Mode::Parked {
+                continue; // done: the robot's watchdog holds it still
+            }
             let sense = Sense {
                 t: now,
                 pos: st.pos,
@@ -690,7 +702,7 @@ impl EdgeServer {
         let mut newly_delivered = false;
         for k in 0..self.teams.len() {
             let snap = self.snapshot.as_ref().unwrap();
-            let done = snap.objects[k].pos.dist(self.layout.payloads[k].goal) < DELIVERED;
+            let done = snap.objects[k].pos.dist(self.layout.payloads[k].goal) < DELIVERED_RADIUS;
             if done && !self.teams[k].delivered {
                 self.teams[k].delivered = true;
                 newly_delivered = true;

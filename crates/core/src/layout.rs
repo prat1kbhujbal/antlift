@@ -179,6 +179,9 @@ fn border(w: f32, h: f32) -> Vec<Aabb> {
     ]
 }
 
+/// A payload counts as delivered within this distance of its goal (m).
+pub const DELIVERED_RADIUS: f32 = 1.0;
+
 /// Robots are discs of this radius.
 pub const ROBOT_RADIUS: f32 = 0.25;
 /// Grip points sit this far outside the payload boundary.

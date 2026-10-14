@@ -7,7 +7,7 @@
 
 use crate::{
     axis_error, wrap_angle, Action, ContingencyTree, NodeId, ObjectState, Predicate, RobotId, Role,
-    Uplink, ROBOT_RADIUS, SLOT_OFFSET, V2,
+    Uplink, DELIVERED_RADIUS, ROBOT_RADIUS, SLOT_OFFSET, V2,
 };
 
 /// Stalled = the payload has moved less than this, and turned less than
@@ -24,6 +24,11 @@ const JAM_RETRIES: u8 = 3;
 /// Keep the current grip if the edge's slot is this close to it.
 const SLOT_KEEP_DIST: f32 = 0.4;
 const HEARTBEAT_PERIOD: f32 = 1.0;
+/// Parked robots only check in this often.
+const PARKED_HEARTBEAT: f32 = 5.0;
+/// A parked robot whose payload is nudged further than this from its goal
+/// goes back to work.
+const UNPARK_RADIUS: f32 = 2.5;
 
 /// Everything a robot can perceive locally this tick.
 #[derive(Clone, Copy, Debug)]
@@ -64,6 +69,8 @@ pub enum Mode {
     Tree,
     /// No valid tree: ant-style local rules toward the goal beacon.
     Reflex,
+    /// Plan finished with the payload delivered: holding it, nearly silent.
+    Parked,
 }
 
 /// Something worth drawing or counting this tick.
@@ -91,6 +98,8 @@ pub struct Brain {
     jam_tries: u8,
     /// Last tree edge taken: (from, to, speculative, sim time).
     pub last_edge: Option<(NodeId, NodeId, bool, f32)>,
+    /// Delivered and holding: see [`Mode::Parked`].
+    parked: bool,
 }
 
 impl Brain {
@@ -108,11 +117,14 @@ impl Brain {
             reflex_slot: None,
             jam_tries: 0,
             last_edge: None,
+            parked: false,
         }
     }
 
     pub fn mode(&self) -> Mode {
-        if self.tree.is_some() {
+        if self.parked {
+            Mode::Parked
+        } else if self.tree.is_some() {
             Mode::Tree
         } else {
             Mode::Reflex
@@ -149,8 +161,10 @@ impl Brain {
     }
 
     pub fn tick(&mut self, s: &Sense, dt: f32, up: &mut Vec<Uplink>) -> (Command, Option<Event>) {
-        if self.tree.as_ref().is_some_and(|t| s.t > t.valid_until) {
-            self.tree = None; // lease expired: the edge has gone quiet
+        // A lease expiring means the edge has gone quiet. A parked robot's
+        // job is done, so it keeps holding rather than falling back to reflexes.
+        if !self.parked && self.tree.as_ref().is_some_and(|t| s.t > t.valid_until) {
+            self.tree = None;
         }
 
         let mut event = None;
@@ -215,8 +229,25 @@ impl Brain {
             cmd = self.reflex(s);
         }
 
+        // Parked: the plan's final hold, gripping, with the payload at its goal.
+        let at_goal = s.object.pos.dist(s.goal);
+        let final_hold = self.tree.as_ref().is_some_and(|t| {
+            let n = &t.nodes[self.node as usize];
+            n.action == Action::Hold && n.edges.is_empty()
+        });
+        if final_hold && s.attached && at_goal < DELIVERED_RADIUS {
+            self.parked = true;
+        } else if self.parked && (!final_hold || at_goal > UNPARK_RADIUS) {
+            self.parked = false;
+        }
+
         if s.t >= self.next_heartbeat {
-            self.next_heartbeat = s.t + HEARTBEAT_PERIOD;
+            let period = if self.parked {
+                PARKED_HEARTBEAT
+            } else {
+                HEARTBEAT_PERIOD
+            };
+            self.next_heartbeat = s.t + period;
             up.push(Uplink::Heartbeat {
                 robot: self.id,
                 node: self.node,
@@ -233,6 +264,7 @@ impl Brain {
         self.node_time = 0.0;
         self.stall_time = 0.0;
         self.anchor = None;
+        self.parked = false;
     }
 
     fn follow_edges(&mut self, s: &Sense, up: &mut Vec<Uplink>) -> Option<Event> {

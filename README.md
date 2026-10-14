@@ -35,7 +35,8 @@ The toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatical
 - **Ghost futures:** faint sofa outlines are the 7 futures the edge simulated at its last plan (as planned, kicked, grip lost, robots down). A red ✕ marks a future that jammed. The edge sets its contingency probabilities from these.
 - **Choke points** (warehouse) are dashed boxes over the doorways: grey when free, amber with "held by X" when reserved, and "Y waits" when another team is queued. A **WAIT** marker shows where a queued team stops.
 - **Risk badges** on the path (`jam 72%`) are the edge's predicted probabilities. **Red cells** are its learned map of places where predictions failed.
-- **Robots:** blue pushers, amber steerers, purple when running on reflexes (no valid tree), teal when remote-controlled by the baseline. A green ring flash means a predicted branch fired. A red one means a surprise was reported.
+- **Robots:** blue pushers, amber steerers, purple when running on reflexes (no valid tree), teal when remote-controlled by the baseline, and **green when parked**: the plan is finished and the payload is at its goal. A green ring flash means a predicted branch fired. A red one means a surprise was reported.
+- **Delivered:** when every payload has arrived, a **DELIVERED** banner shows the time, robots settle and park, and after 3 s the run freezes so the radio goes quiet. Parked robots only check in every 5 s (about 1 B/robot/s, down from 40-60 while carrying), and the edge stops replanning and renewing their trees.
 
 ### Controls
 | Input | Action |
@@ -82,6 +83,7 @@ Every piece is written from scratch in Rust; the only external engine is Rapier 
 - **Contingency tree** = a guarded state machine. Each tick a robot checks its node's edges against local sensing only and follows the first that holds. Predicted problems are handled with no network round trip.
 - **Control:** robots drive with a local velocity loop. When gripping, every robot runs the same feed-forward + P law on the payload's velocity; steerers (far from the centre) add a tangential term to control heading. Pushers and steerers agree without talking because they compute from the same estimate.
 - **Stall detection** by lack of net progress over a window (robust to jiggling), **re-localization** in the plan after re-gripping, and **ant-style reflexes** when no valid tree is held.
+- **Parking:** a robot at the end of its plan, gripping a delivered payload, parks: it holds, checks in only every 5 s and no longer needs a lease. It goes back to work if the payload is pushed more than 2.5 m off its goal or a new plan arrives.
 
 ### Protocol (radio)
 - Compact binary trees (positions in cm, angles in 0.1 mrad), tree and **lease** acknowledgements, **byte-identical retransmission** with an RTT estimate (EWMA, Karn's rule) and exponential backoff, and leases so robots keep working through edge outages.
@@ -102,9 +104,9 @@ Against a **centralized baseline that runs the identical decision code on the ed
 ![Latency sweep](docs/img/latency.png)
 
 - **7-10× less radio traffic** (45-68 vs about 440 B/robot/s), with every variant delivering in every run on the hall. On a perfect link centralized is a few seconds faster.
-- **Flat under latency:** speculative delivers in 76-87 s from 0 to 1000 ms of one-way latency. Centralized slows from 200 ms, succeeds in only half the runs at 500 ms and fails every run at 1 s.
+- **Flat under latency:** speculative delivers in 76-87 s from 0 to 1000 ms of one-way latency. Centralized slows from 200 ms, succeeds in only 4 of 10 runs at 500 ms and fails every run at 1 s.
 - **Survives edge outages** of up to 40 s in every run, with robots working through cached leases.
-- **Warehouse** (3 payloads, 44 robots): speculative with heuristic priors is the best variant, delivering all 3 payloads in 50/50 runs, fastest in every condition (111-129 s) and with about 8× less radio. Centralized fails 1 run in 50 and is slowest on bad links.
+- **Warehouse** (3 payloads, 44 robots): every variant delivers all 3 payloads in every run. Speculative with heuristic priors is fastest in four of five conditions (111-123 s) with 7-9× less radio; centralized is marginally faster when robots die mid-run and slowest on a slow link.
 - **Ghost futures** (probabilities from simulated futures rather than hand-written priors) don't help: within noise on the hall and slower in the warehouse. Details are in the design doc.
 
 Building a fair baseline also exposed six real bugs, including a retransmit storm and a shared re-localization bug that had inflated early results. The methodology, every number, and that list are in [docs/design.md](docs/design.md#4-evaluation).
