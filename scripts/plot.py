@@ -150,6 +150,37 @@ def bandwidth_figure(bench: pd.DataFrame):
     fig.savefig(OUT / "bandwidth.png", dpi=160)
 
 
+def warehouse_figure(wh: pd.DataFrame):
+    """Success rate and surprises per run, by condition, for the 3-team level."""
+    g = wh.groupby(["condition", "control"]).agg(
+        success=("reached", lambda r: r.mean() * 100), surprises=("misses", "mean")
+    )
+    order = list(dict.fromkeys(wh["condition"]))[::-1]
+    fig, (a, b) = plt.subplots(1, 2, figsize=(12, 4.8), layout="constrained", sharey=True)
+    h = 0.26
+    for k, mode in enumerate(MODES):
+        ys = [y + (1 - k) * (h + 0.03) for y in range(len(order))]
+        vals = [g.loc[(c, mode)] if (c, mode) in g.index else None for c in order]
+        succ = [v["success"] if v is not None else 0 for v in vals]
+        surp = [v["surprises"] if v is not None else 0 for v in vals]
+        a.barh(ys, succ, height=h, color=COLORS[mode], label=LABELS[mode])
+        b.barh(ys, surp, height=h, color=COLORS[mode])
+        for y, v in zip(ys, succ):
+            a.text(v + 1, y, f"{v:.0f}%", va="center", color=INK_2, fontsize=8.5)
+        for y, v in zip(ys, surp):
+            b.text(v + 1, y, f"{v:.0f}", va="center", color=INK_2, fontsize=8.5)
+    a.set_yticks(range(len(order)), [c.replace("warehouse", "").strip() or "clean" for c in order])
+    for ax in (a, b):
+        ax.grid(axis="y", visible=False)
+    a.set_xlim(0, 115)
+    a.set_title("Warehouse: runs delivering all 3 payloads")
+    a.set_xlabel("Success rate (%)")
+    b.set_title("Surprises per run (stalls nobody predicted)")
+    b.set_xlabel("Surprises")
+    bottom_legend(fig, a)
+    fig.savefig(OUT / "warehouse.png", dpi=160)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     bench = pd.read_csv(RESULTS / "bench.csv")
@@ -157,7 +188,8 @@ def main():
     latency_figure(sweeps)
     outage_figure(sweeps)
     bandwidth_figure(bench)
-    print(f"wrote {OUT}/latency.png, outage.png, bandwidth.png")
+    warehouse_figure(pd.read_csv(RESULTS / "warehouse.csv"))
+    print(f"wrote {OUT}/latency.png, outage.png, bandwidth.png, warehouse.png")
 
 
 if __name__ == "__main__":

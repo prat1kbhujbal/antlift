@@ -8,10 +8,15 @@ Everything (physics, robots, edge server, radio) runs on one laptop.
 
 *Side by side (`V`): the same scenario with the same clicks. Top: robots run their own contingency trees, with a trickle of radio packets. Bottom: the centralized baseline streams every command, so the radio is a constant cloud. Right: live comparison.*
 
+**The warehouse** (`W`): three teams carry a sofa, a pallet and a 6 m beam through shared doors. The edge reserves each doorway for one payload at a time ("held by A"), the others queue in front, and robots from delivered teams are lent to the rest.
+
+![Warehouse: three teams sharing doorways](docs/warehouse.png)
+
 ## Run it
 
 ```sh
 cargo run --release                          # interactive demo
+cargo run --release -- --warehouse           # start on the 3-team warehouse
 cargo run --release -- --compare             # start in side-by-side mode
 cargo run --release -- --select 3            # start with robot #3's tree open
 cargo run --release --bin bench              # full benchmark (see Results)
@@ -28,6 +33,7 @@ The toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatical
 - **Radio packets** fly between the robots and the **EDGE** access point. Blue: contingency trees. Grey: acks and status. Orange: centralized commands. Teal: centralized state reports. Red: surprises. A red ✕ is a lost packet. Packets are drawn slowed down so you can see them.
 - **Click a robot** to open its live contingency tree. The nominal plan runs down the left side, and the problems the edge predicted for that leg branch to the right (`stuck → back off → square up`). The robot's current step is filled in, and a branch flashes green when it fires.
 - **Ghost futures:** faint sofa outlines are the 7 futures the edge simulated at its last plan (as planned, kicked, grip lost, robots down). A red ✕ marks a future that jammed. The edge sets its contingency probabilities from these.
+- **Choke points** (warehouse) are dashed boxes over the doorways: grey when free, amber with "held by X" when reserved, and "Y waits" when another team is queued. A **WAIT** marker shows where a queued team stops.
 - **Risk badges** on the path (`jam 72%`) are the edge's predicted probabilities. **Red cells** are its learned map of places where predictions failed.
 - **Robots:** blue pushers, amber steerers, purple when running on reflexes (no valid tree), teal when remote-controlled by the baseline. A green ring flash means a predicted branch fired. A red one means a surprise was reported.
 
@@ -42,6 +48,7 @@ The toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatical
 | `C` | switch speculative ↔ centralized live (no restart) |
 | `V` | side-by-side comparison (both start fresh; your actions apply to both) |
 | `T` / `P` / `H` / `K` | toggle ghost futures / packets / learned heat map / risk badges |
+| `W` | switch between the doorway and warehouse levels |
 | `F` / `Space` / `R` / `Esc` | fast-forward ×4 / pause / reset / deselect |
 
 ## How it works
@@ -63,12 +70,13 @@ Against a **centralized baseline that runs the identical decision code on the ed
 - **Flat under latency:** speculative delivers in 60-66 s from 0 to 1000 ms of one-way latency. Centralized slows from 200 ms and fails every run at 1 s.
 - **Survives edge outages** of up to 40 s in every run, with robots working through cached leases.
 - **Honest loss:** centralized is slightly faster when the payload is repeatedly kicked (72.8 vs 76.6 s).
-- **Ghost futures** (probabilities from simulated futures rather than hand-written priors) didn't measurably change outcomes on this level. The heuristics were already good enough, and the dashed line overlaps. Details are in the design doc.
+- **Warehouse** (3 payloads, 44 robots): every variant coordinates without deadlock, and speculative still uses about 8× less radio. Centralized is the most reliable there (50/50 vs 47-48/50): speculative's weak spot is a payload wedging in a doorway.
+- **Ghost futures** (probabilities from simulated futures rather than hand-written priors) didn't reliably change outcomes on either level. In the warehouse they had more surprises in four of five conditions. Details are in the design doc.
 
 Building a fair baseline also exposed six real bugs, including a retransmit storm and a shared re-localization bug that had inflated early results. The methodology, every number, and that list are in [docs/design.md](docs/design.md#4-evaluation).
 
 ```sh
-cargo run --release --bin bench     # 570 runs → results/
+cargo run --release --bin bench     # 720 runs, ~4 min on 20 cores → results/
 uv run scripts/plot.py              # → docs/img/
 ```
 
