@@ -1,4 +1,4 @@
-//! Rapier wrapper: the payload, robots, walls and dropped crates.
+//! Rapier wrapper: the payloads, robots, walls and dropped crates.
 //!
 //! Top-down 2D with no gravity; floor friction is modelled with damping.
 
@@ -19,15 +19,21 @@ fn p(v: Vector) -> V2 {
 pub struct RobotBody {
     pub handle: RigidBodyHandle,
     pub grip: Option<ImpulseJointHandle>,
+    /// Which payload the grip is on (meaningful while `grip` is set).
+    pub holding: usize,
     /// Where we gripped, in the object's local frame.
     pub grip_slot: V2,
     pub active: bool,
 }
 
+pub struct Payload {
+    pub handle: RigidBodyHandle,
+    pub half: V2,
+}
+
 pub struct SimWorld {
     pub physics: PhysicsWorld,
-    pub object: RigidBodyHandle,
-    pub object_half: V2,
+    pub objects: Vec<Payload>,
     pub robots: Vec<RobotBody>,
     pub crates: Vec<(RigidBodyHandle, V2)>,
 }
@@ -48,22 +54,32 @@ impl SimWorld {
             );
         }
 
-        let (object, _) = physics.insert(
-            RigidBodyBuilder::dynamic()
-                .translation(v(layout.object_start))
-                .rotation(layout.object_start_angle)
-                .linear_damping(3.0)
-                .angular_damping(3.0)
-                .can_sleep(false),
-            ColliderBuilder::cuboid(layout.object_half.x, layout.object_half.y)
-                .density(8.0)
-                .friction(0.3),
-        );
+        let objects = layout
+            .payloads
+            .iter()
+            .map(|spec| {
+                let (handle, _) = physics.insert(
+                    RigidBodyBuilder::dynamic()
+                        .translation(v(spec.start))
+                        .rotation(spec.angle)
+                        .linear_damping(3.0)
+                        .angular_damping(3.0)
+                        .can_sleep(false),
+                    ColliderBuilder::cuboid(spec.half.x, spec.half.y)
+                        .density(8.0)
+                        .friction(0.3),
+                );
+                Payload {
+                    handle,
+                    half: spec.half,
+                }
+            })
+            .collect();
 
-        // Robots start parked in a loose grid in the corner of the first room.
-        let robots = (0..layout.n_robots)
+        // Each team starts parked in a loose grid near its payload.
+        let robots = (0..layout.n_robots())
             .map(|i| {
-                let start = V2::new(2.0 + (i % 4) as f32 * 1.0, 13.0 + (i / 4) as f32 * 1.0);
+                let start = layout.spawn_pos(i);
                 let (handle, _) = physics.insert(
                     RigidBodyBuilder::dynamic()
                         .translation(v(start))
@@ -77,6 +93,7 @@ impl SimWorld {
                 RobotBody {
                     handle,
                     grip: None,
+                    holding: 0,
                     grip_slot: V2::ZERO,
                     active: true,
                 }
@@ -85,8 +102,7 @@ impl SimWorld {
 
         Self {
             physics,
-            object,
-            object_half: layout.object_half,
+            objects,
             robots,
             crates: Vec::new(),
         }
@@ -96,16 +112,16 @@ impl SimWorld {
     /// and velocity, robot positions and grips, and dropped crates. This is
     /// the edge's model of the present, used to simulate possible futures.
     pub fn from_snapshot(layout: &Layout, snap: &Snapshot) -> Self {
-        let mut w = Self::new(&Layout {
-            object_start: snap.object.pos,
-            object_start_angle: snap.object.angle,
-            n_robots: snap.robots.len(),
-            ..layout.clone()
-        });
-        {
-            let b = &mut w.physics.bodies[w.object];
-            b.set_linvel(v(snap.object.vel), true);
-            b.set_angvel(snap.object.angvel, true);
+        let mut l = layout.clone();
+        for (spec, o) in l.payloads.iter_mut().zip(&snap.objects) {
+            spec.start = o.pos;
+            spec.angle = o.angle;
+        }
+        let mut w = Self::new(&l);
+        for (k, o) in snap.objects.iter().enumerate() {
+            let b = &mut w.physics.bodies[w.objects[k].handle];
+            b.set_linvel(v(o.vel), true);
+            b.set_angvel(o.angvel, true);
         }
         for (i, r) in snap.robots.iter().enumerate() {
             let h = w.robots[i].handle;
@@ -113,7 +129,7 @@ impl SimWorld {
             if !r.active {
                 w.disable_robot(i);
             } else if r.attached {
-                w.grip(i);
+                w.grip(i, r.holding as usize);
             }
         }
         for o in &snap.obstacles {
@@ -127,15 +143,33 @@ impl SimWorld {
         self.physics.step();
     }
 
-    pub fn object_state(&self) -> ObjectState {
-        let b = &self.physics.bodies[self.object];
+    pub fn object_state(&self, k: usize) -> ObjectState {
+        let o = &self.objects[k];
+        let b = &self.physics.bodies[o.handle];
         ObjectState {
             pos: p(b.translation()),
             angle: b.rotation().angle(),
             vel: p(b.linvel()),
             angvel: b.angvel(),
-            half: self.object_half,
+            half: o.half,
         }
+    }
+
+    pub fn object_states(&self) -> Vec<ObjectState> {
+        (0..self.objects.len())
+            .map(|k| self.object_state(k))
+            .collect()
+    }
+
+    /// The payload whose centre is closest to `at`.
+    pub fn nearest_object(&self, at: V2) -> usize {
+        (0..self.objects.len())
+            .min_by(|&a, &b| {
+                let da = self.object_state(a).pos.dist(at);
+                let db = self.object_state(b).pos.dist(at);
+                da.total_cmp(&db)
+            })
+            .unwrap_or(0)
     }
 
     pub fn robot_pos(&self, i: usize) -> V2 {
@@ -154,21 +188,22 @@ impl SimWorld {
         b.add_force(v(f), true);
     }
 
-    /// Pin the robot to the object where it stands now.
-    pub fn grip(&mut self, i: usize) {
+    /// Pin robot `i` to payload `k` where it stands now.
+    pub fn grip(&mut self, i: usize, k: usize) {
         if self.robots[i].grip.is_some() {
             return;
         }
-        let o = self.object_state();
+        let o = self.object_state(k);
         let rel = (self.robot_pos(i) - o.pos).rotate(-o.angle);
         let joint = RevoluteJointBuilder::new()
             .local_anchor1(v(rel))
             .local_anchor2(Vector::ZERO)
             .contacts_enabled(false);
-        let h = self
-            .physics
-            .insert_impulse_joint(self.object, self.robots[i].handle, joint);
+        let h =
+            self.physics
+                .insert_impulse_joint(self.objects[k].handle, self.robots[i].handle, joint);
         self.robots[i].grip = Some(h);
+        self.robots[i].holding = k;
         self.robots[i].grip_slot = rel;
     }
 
@@ -226,9 +261,10 @@ impl SimWorld {
             .collect()
     }
 
-    /// Hit the payload with an impulse at a world point (the "kick" tool).
+    /// Hit the payload nearest `at` with an impulse there (the "kick" tool).
     pub fn kick(&mut self, at: V2, impulse: V2) {
-        let b = &mut self.physics.bodies[self.object];
+        let k = self.nearest_object(at);
+        let b = &mut self.physics.bodies[self.objects[k].handle];
         b.apply_impulse_at_point(v(impulse), v(at), true);
     }
 }

@@ -83,6 +83,8 @@ pub struct ContingencyTree {
     /// Sim time (s) after which the robot must stop trusting this tree.
     pub valid_until: f32,
     pub role: Role,
+    /// Which payload's team this robot is on (the edge can reassign it).
+    pub team: u8,
     /// Grip point in the object's local frame.
     pub slot: V2,
     /// Node 0 is the entry node.
@@ -106,6 +108,7 @@ impl ContingencyTree {
             Role::Pusher => 0,
             Role::Steerer => 1,
         });
+        w.push(self.team);
         put_pos(&mut w, self.slot);
         w.push(self.nodes.len() as u8);
         for n in &self.nodes {
@@ -167,6 +170,7 @@ impl ContingencyTree {
             1 => Role::Steerer,
             _ => return None,
         };
+        let team = r.u8()?;
         let slot = r.pos()?;
         let n_nodes = r.u8()?;
         let mut nodes = Vec::with_capacity(n_nodes as usize);
@@ -220,6 +224,7 @@ impl ContingencyTree {
             version,
             valid_until,
             role,
+            team,
             slot,
             nodes,
         })
@@ -283,6 +288,7 @@ mod tests {
             version: 7,
             valid_until: 42.5,
             role: Role::Steerer,
+            team: 2,
             slot: V2::new(-2.0, 0.85),
             nodes: vec![
                 Node {
@@ -333,6 +339,7 @@ mod tests {
         let d = ContingencyTree::decode(&bytes).expect("decodes");
         assert_eq!(d.version, t.version);
         assert_eq!(d.role, t.role);
+        assert_eq!(d.team, 2);
         assert_eq!(d.nodes.len(), 3);
         match d.nodes[1].action {
             Action::Push { target, heading } => {

@@ -21,13 +21,16 @@ pub struct RobotObs {
     pub pos: V2,
     pub active: bool,
     pub attached: bool,
+    /// Which payload it is holding, when attached.
+    pub holding: u8,
 }
 
 /// What the edge's overhead camera sees. Infrastructure traffic, not robot radio.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub t: f32,
-    pub object: ObjectState,
+    /// Every payload, in layout order.
+    pub objects: Vec<ObjectState>,
     pub robots: Vec<RobotObs>,
     /// Obstacles that are not part of the static layout (e.g. dropped crates).
     pub obstacles: Vec<Aabb>,
@@ -82,7 +85,9 @@ impl Uplink {
             Uplink::BranchFired { .. } => 1 + 2 + 4 + 1 + 1,
             Uplink::Surprise { .. } => 1 + 2 + 4 + 1 + 4,
             Uplink::TreeAck { .. } => 1 + 2 + 4 + 4,
-            Uplink::Camera(s) => 32 + s.robots.len() * 6 + s.obstacles.len() * 8,
+            Uplink::Camera(s) => {
+                8 + s.objects.len() * 16 + s.robots.len() * 6 + s.obstacles.len() * 8
+            }
             // Position in cm and velocity in cm/s as i16 pairs, plus the
             // grip point in cm when gripping.
             Uplink::State { grip, .. } => 1 + 2 + 4 + 4 + 1 + if grip.is_some() { 4 } else { 0 },

@@ -75,6 +75,9 @@ pub enum Event {
 
 pub struct Brain {
     pub id: RobotId,
+    /// The payload this robot works on. Starts from the layout; the edge
+    /// can move it to another team through its tree.
+    pub team: u8,
     pub tree: Option<ContingencyTree>,
     pub node: NodeId,
     node_time: f32,
@@ -91,9 +94,10 @@ pub struct Brain {
 }
 
 impl Brain {
-    pub fn new(id: RobotId) -> Self {
+    pub fn new(id: RobotId, team: u8) -> Self {
         Self {
             id,
+            team,
             tree: None,
             node: 0,
             node_time: 0.0,
@@ -132,6 +136,10 @@ impl Brain {
             return None; // reordered stale packet
         }
         let ack = (tree.version, tree.valid_until);
+        if tree.team != self.team {
+            self.team = tree.team;
+            self.reflex_slot = None;
+        }
         let same_plan = self.tree.as_ref().is_some_and(|t| t.nodes == tree.nodes);
         self.tree = Some(tree);
         if !same_plan {

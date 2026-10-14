@@ -41,9 +41,11 @@ pub struct Swarm {
 impl Swarm {
     pub fn new(layout: Layout, control: ControlMode) -> Self {
         let world = SimWorld::new(&layout);
-        let n = layout.n_robots;
+        let n = layout.n_robots();
         Self {
-            brains: (0..n).map(|i| Brain::new(i as u16)).collect(),
+            brains: (0..n)
+                .map(|i| Brain::new(i as u16, layout.initial_team(i) as u8))
+                .collect(),
             last_events: vec![None; n],
             remote: vec![None; n],
             // Stagger state reports across the period.
@@ -104,11 +106,17 @@ impl Swarm {
             }
         }
 
-        let object = self.world.object_state();
+        let objects = self.world.object_states();
         for i in 0..self.brains.len() {
             self.last_events[i] = None;
             if !self.world.robots[i].active {
                 continue;
+            }
+            let team = self.brains[i].team as usize;
+            let rb = &self.world.robots[i];
+            if self.control == ControlMode::Speculative && rb.grip.is_some() && rb.holding != team {
+                // Moved to another team: let go of the old payload first.
+                self.world.release(i);
             }
             let rb = &self.world.robots[i];
             let sense = Sense {
@@ -117,8 +125,8 @@ impl Swarm {
                 vel: self.world.robot_vel(i),
                 attached: rb.grip.is_some(),
                 grip_slot: rb.grip_slot,
-                object,
-                goal: self.layout.goal,
+                object: objects[team],
+                goal: self.layout.payloads[team].goal,
             };
 
             let cmd = match self.control {
@@ -164,7 +172,12 @@ impl Swarm {
                 self.world.release(i);
             }
             if cmd.grip {
-                self.world.grip(i);
+                // A remote-controlled robot grips whatever it is next to.
+                let k = match self.control {
+                    ControlMode::Speculative => team,
+                    ControlMode::Centralized => self.world.nearest_object(sense.pos),
+                };
+                self.world.grip(i, k);
             }
             self.world.drive(i, cmd.force);
         }
@@ -177,7 +190,7 @@ impl Swarm {
     pub fn snapshot(&self) -> Snapshot {
         Snapshot {
             t: self.t,
-            object: self.world.object_state(),
+            objects: self.world.object_states(),
             robots: self
                 .world
                 .robots
@@ -188,6 +201,7 @@ impl Swarm {
                     pos: self.world.robot_pos(i),
                     active: r.active,
                     attached: r.grip.is_some(),
+                    holding: r.holding as u8,
                 })
                 .collect(),
             obstacles: self.world.crate_aabbs(),
@@ -200,7 +214,17 @@ impl Swarm {
         self.remote.iter_mut().for_each(|r| *r = None);
     }
 
+    /// Payload `k` is at its goal.
+    pub fn delivered(&self, k: usize) -> bool {
+        self.world
+            .object_state(k)
+            .pos
+            .dist(self.layout.payloads[k].goal)
+            < 1.0
+    }
+
+    /// Every payload is at its goal.
     pub fn at_goal(&self) -> bool {
-        self.world.object_state().pos.dist(self.layout.goal) < 1.0
+        (0..self.layout.payloads.len()).all(|k| self.delivered(k))
     }
 }
