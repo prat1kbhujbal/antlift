@@ -3,6 +3,7 @@
 
 use crate::{Session, SessionConfig};
 use antlift_core::{ControlMode, Layout, V2};
+use antlift_edge::EdgeConfig;
 use antlift_net::LinkConfig;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -131,10 +132,37 @@ pub fn layout_for(seed: u64) -> Layout {
     l
 }
 
+/// One way of running the swarm, as compared in the benchmark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Variant {
+    pub name: &'static str,
+    pub control: ControlMode,
+    /// Ghost futures on (probabilities from simulation) or off (heuristics).
+    pub ghosts: bool,
+}
+
+pub const VARIANTS: [Variant; 3] = [
+    Variant {
+        name: "speculative",
+        control: ControlMode::Speculative,
+        ghosts: true,
+    },
+    Variant {
+        name: "speculative-heuristic",
+        control: ControlMode::Speculative,
+        ghosts: false,
+    },
+    Variant {
+        name: "centralized",
+        control: ControlMode::Centralized,
+        ghosts: true,
+    },
+];
+
 #[derive(Clone, Debug)]
 pub struct RunResult {
     pub condition: String,
-    pub control: ControlMode,
+    pub variant: Variant,
     pub seed: u64,
     /// Sim time the payload reached the goal, if it did.
     pub reached: Option<f32>,
@@ -147,12 +175,17 @@ pub struct RunResult {
     pub bytes_per_robot_s: f32,
 }
 
-pub fn run(cond: &Condition, control: ControlMode, seed: u64, limit: f32) -> RunResult {
+pub fn run(cond: &Condition, variant: Variant, seed: u64, limit: f32) -> RunResult {
+    let base = SessionConfig::new(variant.control);
     let mut sess = Session::new(SessionConfig {
+        edge: EdgeConfig {
+            ghosts: variant.ghosts,
+            ..base.edge
+        },
         layout: layout_for(seed),
         link: cond.link,
         seed,
-        ..SessionConfig::new(control)
+        ..base
     });
     let mut done = vec![false; cond.disruptions.len()];
     let mut reached = None;
@@ -170,7 +203,7 @@ pub fn run(cond: &Condition, control: ControlMode, seed: u64, limit: f32) -> Run
     let view = sess.edge.view();
     RunResult {
         condition: cond.name.clone(),
-        control,
+        variant,
         seed,
         reached,
         final_dist: sess

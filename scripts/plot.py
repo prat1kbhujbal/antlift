@@ -21,9 +21,16 @@ SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e4e3df"
-COLORS = {"speculative": "#2a78d6", "centralized": "#eb6834"}
-LABELS = {"speculative": "Speculative (trees on robots)", "centralized": "Centralized (edge streams commands)"}
-MODES = ["speculative", "centralized"]
+# Colour follows the entity: centralized keeps slot 2 whatever else is plotted.
+COLORS = {"speculative": "#2a78d6", "centralized": "#eb6834", "speculative-heuristic": "#1baf7a"}
+LABELS = {
+    "speculative": "Speculative, ghost futures",
+    "speculative-heuristic": "Speculative, heuristic priors",
+    "centralized": "Centralized (edge streams commands)",
+}
+MODES = ["speculative", "speculative-heuristic", "centralized"]
+# Short names for direct labels at line ends.
+SHORT = {"speculative": "ghost futures", "speculative-heuristic": "heuristic", "centralized": "centralized"}
 
 plt.rcParams.update(
     {
@@ -67,7 +74,7 @@ def summarize(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
 
 def bottom_legend(fig, ax):
     handles, labels = ax.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="outside lower center", ncols=2)
+    fig.legend(handles, labels, loc="outside lower center", ncols=3)
 
 
 def line_panel(ax, s: pd.DataFrame, x: str, y: str, ci: str | None, label_last: bool = True):
@@ -76,19 +83,21 @@ def line_panel(ax, s: pd.DataFrame, x: str, y: str, ci: str | None, label_last: 
         c = COLORS[mode]
         if ci:
             ax.fill_between(m[x], m[y] - m[ci], m[y] + m[ci], color=c, alpha=0.15, linewidth=0)
-        ax.plot(m[x], m[y], color=c, linewidth=2, marker="o", markersize=7,
+        # Dashed so an identical series underneath still shows through.
+        style = "--" if mode == "speculative-heuristic" else "-"
+        ax.plot(m[x], m[y], color=c, linewidth=2, linestyle=style, marker="o", markersize=7,
                 markeredgecolor=SURFACE, markeredgewidth=2, label=LABELS[mode])
         if label_last:
             last = m.dropna(subset=[y]).iloc[-1]
             # Nudge apart so the two end labels never sit on top of each other.
-            dy = 7 if mode == "centralized" else -7
-            ax.annotate(mode, (last[x], last[y]), xytext=(8, dy), textcoords="offset points",
+            dy = {"centralized": 9, "speculative": -2, "speculative-heuristic": -13}[mode]
+            ax.annotate(SHORT[mode], (last[x], last[y]), xytext=(8, dy), textcoords="offset points",
                         va="center", color=INK, fontsize=9)
 
 
 def latency_figure(sweeps: pd.DataFrame):
     s = summarize(sweeps[sweeps["sweep"] == "latency_ms"], ["value", "control"])
-    fig, (a, b) = plt.subplots(1, 2, figsize=(11, 4.4), layout="constrained")
+    fig, (a, b) = plt.subplots(1, 2, figsize=(12, 4.6), layout="constrained")
     line_panel(a, s, "value", "time", "ci")
     a.set_title("Time to deliver vs. network latency")
     a.set_xlabel("One-way latency (ms), 10% packet loss")
@@ -107,7 +116,7 @@ def latency_figure(sweeps: pd.DataFrame):
 
 def outage_figure(sweeps: pd.DataFrame):
     s = summarize(sweeps[sweeps["sweep"] == "outage_s"], ["value", "control"])
-    fig, ax = plt.subplots(figsize=(6.5, 4.4), layout="constrained")
+    fig, ax = plt.subplots(figsize=(7.5, 4.6), layout="constrained")
     line_panel(ax, s, "value", "time", "ci")
     ax.set_title("Time to deliver vs. edge outage length")
     ax.set_xlabel("Edge unreachable from t = 20 s for (s)")
@@ -122,11 +131,12 @@ def bandwidth_figure(bench: pd.DataFrame):
     s = bench.groupby(["condition", "control"])["bytes_per_robot_s"].mean().unstack()
     order = list(dict.fromkeys(bench["condition"]))
     s = s.loc[order[::-1]]
-    fig, ax = plt.subplots(figsize=(7.5, 4.6), layout="constrained")
-    h = 0.36
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), layout="constrained")
+    h = 0.26
     ys = range(len(s))
     for k, mode in enumerate(MODES):
-        offs = [y + (h / 2 + 0.02) * (1 if k == 0 else -1) for y in ys]
+        # Top to bottom in legend order, with a small gap between bars.
+        offs = [y + (1 - k) * (h + 0.03) for y in ys]
         bars = ax.barh(offs, s[mode], height=h, color=COLORS[mode], label=LABELS[mode])
         for bar, v in zip(bars, s[mode]):
             ax.text(bar.get_width() + 6, bar.get_y() + h / 2, f"{v:.0f}", va="center",

@@ -1,6 +1,6 @@
 # AntLift design
 
-Status: v0.2. The swarm, the edge server and the network all run on one laptop, and the method is evaluated against a centralized baseline.
+Status: v0.3. The swarm, the edge server and the network all run on one laptop, and the method is evaluated against a centralized baseline.
 
 ## 1. Problem
 
@@ -24,7 +24,7 @@ CPUs don't stall on an `if`: they predict the branch and have both outcomes read
 
 ```
                  ┌──────────────────────── EDGE SERVER (own thread) ─────────────────────────┐
- camera 2 Hz ──▶ │ SE(2) planner ─▶ waypoints ─▶ contingency candidates ─▶ per-robot trees    │
+ camera 2 Hz ──▶ │ SE(2) planner ─▶ waypoints ─▶ candidates ─▶ ghost futures ─▶ per-robot trees │
                  │      ▲                         (scored p × impact,     (role-pruned,       │
                  │      └── surprise heat map ◀── surprises               ≤ 256 B each)       │
                  └───────────────▲─────────────────────────────────────────────┬─────────────┘
@@ -71,6 +71,7 @@ One-way `Link<T>` driven by **sim time**, so results don't depend on how fast th
   - Misalign (pushers only): `p ∝ heading change`, recovery = pause until aligned
   - Grip loss: `p = 0.03 + 0.05·observed_grip_losses`, recovery = re-approach and re-grip
   Candidates are added greedily while the encoded tree fits the byte budget.
+- **Ghost futures** (`rollout.rs`): after each plan, the edge rebuilds the physics world from its camera snapshot and runs 7 futures in parallel for 10 s. Each future uses the exact trees the robots would receive: as planned, kicks of 80 and 150 N·s from either side, front robots losing grip, and 3 robots dying. A future "jams" if the payload makes no net progress for 2 s. Jam and misalignment probabilities per waypoint are then updated as a Beta-style blend, `p = (prior·2 + futures that jammed there) / (2 + futures)`. The futures are kept with the plan and drawn in the demo.
 - **Roles and slots**: robots are spread evenly around the perimeter, and robots already gripping keep their spot. Robots far from the centre become steerers. Steerer trees don't get misalignment branches, because steerers are the ones fixing it.
 - **Reliable delivery**: robots acknowledge each tree and lease. The edge retransmits byte-identical copies after an RTT-adaptive timeout with exponential backoff.
 - **Event-driven replanning**: it replans on a surprise, a change in obstacles, the payload drifting more than 2.5 m off the path, or the payload nearing the end of the horizon (seen by the camera, so it still works if the robots' reports are lost). Otherwise it only renews leases (every 8 s, lease 12 s).
@@ -90,21 +91,25 @@ One-way `Link<T>` driven by **sim time**, so results don't depend on how fast th
   So the only difference between the modes is *where decisions are made*.
 - **Conditions:** clean (40 ms), slow (150 ± 50 ms), lossy (20% loss), slow+lossy, disrupted (two kicks, a crate dropped in the doorway, front robots shaken loose), and a 10 s edge outage.
 - **Sweeps:** one-way latency from 0 to 1000 ms (10% loss), and edge outage length from 0 to 40 s.
-- **Seeds:** 10 per cell. Each seed randomizes the payload's start pose (±1 m, ±0.4 rad) and the radio's random generator. 380 runs take a few seconds on a multi-core laptop.
+- **Seeds:** 10 per cell. Each seed randomizes the payload's start pose (±1 m, ±0.4 rad) and the radio's random generator. 570 runs take about 16 s on 20 cores.
 - **Metrics:** success within 240 s, time to goal (mean ± 95% CI over successes), and robot radio bytes per robot per second in both directions (the camera feed is infrastructure and isn't counted).
 
 Reproduce with `cargo run --release --bin bench && uv run scripts/plot.py`.
 
 ### 4.2 Results
 
-| Condition | Speculative success / time (s) / radio (B/robot/s) | Centralized success / time (s) / radio (B/robot/s) |
-|---|---|---|
-| clean | 10/10 · 63.2 ± 5.5 · 50 | 10/10 · 58.4 ± 2.0 · 439 |
-| slow (150 ms) | 10/10 · 61.1 ± 2.8 · 51 | 10/10 · 61.0 ± 1.9 · 439 |
-| lossy (20%) | 10/10 · 61.3 ± 2.8 · 70 | 10/10 · 59.4 ± 1.8 · 439 |
-| slow + lossy | 10/10 · 65.8 ± 6.4 · 67 | 10/10 · 65.3 ± 2.2 · 440 |
-| disrupted | 10/10 · 76.5 ± 3.1 · 51 | 10/10 · 72.6 ± 0.6 · 444 |
-| 10 s edge outage | 10/10 · 62.0 ± 2.0 · 49 | 10/10 · 69.2 ± 3.3 · 422 |
+Three variants: **speculative** (ghost futures), **speculative-heuristic** (the same, with ghost futures off), and **centralized**. Cells are success · time to goal (s) · radio (B/robot/s).
+
+| Condition | Speculative | Speculative, heuristic | Centralized |
+|---|---|---|---|
+| clean | 10/10 · 63.9 ± 5.4 · 48 | 10/10 · 63.2 ± 5.5 · 50 | 10/10 · 58.4 ± 2.0 · 439 |
+| slow (150 ms) | 10/10 · 63.1 ± 5.3 · 50 | 10/10 · 61.1 ± 2.8 · 51 | 10/10 · 60.8 ± 1.6 · 439 |
+| lossy (20%) | 10/10 · 61.6 ± 3.3 · 66 | 10/10 · 61.3 ± 2.8 · 70 | 10/10 · 59.3 ± 1.8 · 439 |
+| slow + lossy | 10/10 · 65.7 ± 6.7 · 64 | 10/10 · 65.8 ± 6.4 · 67 | 10/10 · 65.3 ± 2.4 · 440 |
+| disrupted | 10/10 · 76.6 ± 3.2 · 48 | 10/10 · 76.5 ± 3.1 · 51 | 10/10 · 72.8 ± 0.6 · 444 |
+| 10 s edge outage | 10/10 · 62.3 ± 2.2 · 47 | 10/10 · 62.0 ± 2.0 · 49 | 10/10 · 76.5 ± 17.0 · 422 |
+
+Full tables, including both sweeps for all three variants, are in `results/summary.md`.
 
 ![Latency sweep](img/latency.png)
 ![Bandwidth](img/bandwidth.png)
@@ -114,11 +119,12 @@ Reproduce with `cargo run --release --bin bench && uv run scripts/plot.py`.
 1. **6-9× less radio traffic for the same task.** Speculative uses 50-70 B/robot/s against about 440 for centralized, with time to goal statistically indistinguishable on clean, slow and lossy links.
 2. **Latency tolerance is the decisive difference.** Speculative time to goal is flat from 0 to 1000 ms of one-way latency (60-66 s, 10/10). Centralized slows from 200 ms (74 s), takes almost 3× as long at 500 ms (165 s, 9/10), and fails every run at 1000 ms (0/10).
 3. **Outages:** both modes always recover. Speculative is a few seconds faster, because robots keep working on their cached leases while centralized robots stop on the watchdog.
-4. **Centralized is slightly better when disrupted** (72.6 vs 76.5 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
+4. **Ghost futures did not measurably change outcomes on this benchmark.** Time and success are within noise of heuristic priors in every condition and sweep. Radio traffic is 3-6% lower and more predicted branches fire, but surprises were already near zero with heuristics, so there was little room to improve. Simulating futures also costs compute: about 25 ms per plan and about 2.5× the total benchmark CPU. The method should matter where hand-written priors are wrong (clutter, dynamics the heuristics don't model), and that needs harder layouts (M4).
+5. **Centralized is slightly better when disrupted** (72.6 vs 76.5 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
 
 ### 4.4 What the data does *not* support (yet)
 - Effects here are for **one level, one payload, 16 robots**. Generalization to other layouts and scales is untested (M4).
-- Contingency probabilities are heuristics plus the learned surprise map, not computed from rollouts (M3).
+- Ghost futures are 7 hand-chosen disruptions, simulated with perfect knowledge of the snapshot. Real perception noise and model mismatch between the edge's simulator and the world aren't modelled, because the "real" world here is the same simulator.
 - The radio model is Bernoulli loss with uniform jitter: no bursty loss, no bandwidth cap, no contention.
 - The 1 s latency case is extreme for a local edge. It stands in for cellular or long-haul links rather than Wi-Fi.
 
@@ -140,8 +146,9 @@ Early results (before these fixes) suggested a large speed advantage for specula
 
 **M2: make the claim measurable (done).** Centralized baseline, seed sweeps with CIs, latency and outage sweeps, plots.
 
-**M3: real speculation**
-- Replace heuristic `p` with **physics rollouts** on the edge: clone the Rapier world, inject each candidate disruption, and measure whether the nominal plan survives.
+**M3: real speculation (in progress)**
+- Done: **ghost futures**, physics rollouts on the edge that set contingency probabilities. Measured: no outcome change on the doorway level (section 4.3).
+- Next: harder layouts where heuristics are wrong; sim-to-real gap (perturb the edge's simulator parameters relative to the world's); calibration metrics (Brier score of predicted vs observed jams).
 - Persist learned priors across runs (heat map, grip-loss stats).
 - Smarter fallback once a lease has expired (follow the cached path cautiously rather than pure reflexes).
 - Close the "disrupted" gap: speculate on lateral shoves near walls.

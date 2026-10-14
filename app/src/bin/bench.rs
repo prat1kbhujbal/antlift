@@ -7,15 +7,12 @@
 //! `<out>/sweeps.csv` (latency and outage sweeps).
 
 use antlift_app::scenario::{
-    conditions, latency_sweep, mean_ci, outage_sweep, run, Condition, RunResult,
+    conditions, latency_sweep, mean_ci, outage_sweep, run, Condition, RunResult, Variant, VARIANTS,
 };
-use antlift_core::ControlMode;
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::{fs, thread};
-
-const MODES: [ControlMode; 2] = [ControlMode::Speculative, ControlMode::Centralized];
 
 fn arg<T: std::str::FromStr>(name: &str, default: T) -> T {
     let args: Vec<String> = std::env::args().collect();
@@ -26,18 +23,11 @@ fn arg<T: std::str::FromStr>(name: &str, default: T) -> T {
         .unwrap_or(default)
 }
 
-fn mode_name(m: ControlMode) -> &'static str {
-    match m {
-        ControlMode::Speculative => "speculative",
-        ControlMode::Centralized => "centralized",
-    }
-}
-
 /// Run every condition x mode x seed on all cores. Results come back in job order.
 fn run_all(conds: &[Condition], seeds: u64, limit: f32) -> Vec<RunResult> {
-    let jobs: Vec<(usize, ControlMode, u64)> = (0..conds.len())
+    let jobs: Vec<(usize, Variant, u64)> = (0..conds.len())
         .flat_map(|c| {
-            MODES
+            VARIANTS
                 .iter()
                 .flat_map(move |&m| (1..=seeds).map(move |s| (c, m, s)))
         })
@@ -85,7 +75,7 @@ fn main() {
             csv,
             "{},{},{},{},{},{:.2},{},{},{},{},{},{:.1}",
             r.condition,
-            mode_name(r.control),
+            r.variant.name,
             r.seed,
             r.reached.is_some(),
             r.reached.map_or(String::new(), |t| format!("{t:.2}")),
@@ -104,10 +94,10 @@ fn main() {
         "| Condition | Control | Success | Time to goal (s) | Radio (B/robot/s) | Hits | Surprises |\n|---|---|---|---|---|---|---|\n",
     );
     for c in &conds {
-        for m in MODES {
+        for m in VARIANTS {
             let rows: Vec<&RunResult> = results
                 .iter()
-                .filter(|r| r.condition == c.name && r.control == m)
+                .filter(|r| r.condition == c.name && r.variant == m)
                 .collect();
             let times: Vec<f32> = rows.iter().filter_map(|r| r.reached).collect();
             let bytes: Vec<f32> = rows.iter().map(|r| r.bytes_per_robot_s).collect();
@@ -118,7 +108,7 @@ fn main() {
                 md,
                 "| {} | {} | {}/{} | {} | {} | {:.1} | {:.1} |",
                 c.name,
-                mode_name(m),
+                m.name,
                 times.len(),
                 rows.len(),
                 fmt_ci(mean_ci(&times)),
@@ -146,22 +136,25 @@ fn main() {
     ] {
         let (values, conds): (Vec<f32>, Vec<Condition>) = points.into_iter().unzip();
         let results = run_all(&conds, seeds, limit);
-        let _ = writeln!(
-            md,
-            "\n| {label} | Speculative success | Speculative time (s) | Centralized success | Centralized time (s) |\n|---|---|---|---|---|"
-        );
+        let mut head = format!("\n| {label} |");
+        let mut rule = String::from("|---|");
+        for m in VARIANTS {
+            let _ = write!(head, " {} success | {} time (s) |", m.name, m.name);
+            rule.push_str("---|---|");
+        }
+        let _ = writeln!(md, "{head}\n{rule}");
         for (v, c) in values.iter().zip(&conds) {
             let _ = write!(md, "| {v:.0} ");
-            for m in MODES {
+            for m in VARIANTS {
                 let rows: Vec<&RunResult> = results
                     .iter()
-                    .filter(|r| r.condition == c.name && r.control == m)
+                    .filter(|r| r.condition == c.name && r.variant == m)
                     .collect();
                 for r in &rows {
                     let _ = writeln!(
                         sweep_csv,
                         "{sweep},{v},{},{},{},{},{:.2},{:.1}",
-                        mode_name(m),
+                        m.name,
                         r.seed,
                         r.reached.is_some(),
                         r.reached.map_or(String::new(), |t| format!("{t:.2}")),
