@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/net", "crates/sim", "crates/edge", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+antlift-core = { path = "crates/core" }
+antlift-net = { path = "crates/net" }
+antlift-sim = { path = "crates/sim" }
+antlift-edge = { path = "crates/edge" }
+rapier2d = "0.36"
+macroquad = "0.4"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.dev.package."*"]
+opt-level = 3

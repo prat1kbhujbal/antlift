@@ -1,0 +1,6 @@
+[package]
+name = "antlift-core"
+description = "Shared types: contingency trees, messages, world snapshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
