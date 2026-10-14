@@ -1,0 +1,9 @@
+[package]
+name = "antlift-edge"
+description = "Edge planner: speculates futures and builds per-robot contingency trees"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+antlift-core.workspace = true
