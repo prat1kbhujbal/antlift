@@ -1,24 +1,24 @@
 condition,control,seed,reached,time_s,final_dist_m,hits,misses,plans,up_bytes,down_bytes,bytes_per_robot_s
-clean,speculative,1,true,72.15,1.00,36,0,4,11812,42494,47.0
-clean,speculative,2,true,77.89,1.00,18,0,4,12069,44194,45.1
-clean,speculative,3,true,76.40,0.99,90,0,4,12948,43902,46.5
-clean,speculative,4,true,88.82,0.99,90,0,4,13845,50678,45.4
-clean,speculative,5,true,74.70,0.99,20,0,5,12215,48286,50.6
-clean,speculative,6,true,70.65,0.99,12,0,4,11759,44194,49.5
-clean,speculative,7,true,128.38,0.99,78,0,4,17751,76090,45.7
-clean,speculative,8,true,76.45,0.99,54,0,4,12715,47326,49.1
-clean,speculative,9,true,84.19,0.99,35,0,4,13102,54770,50.4
-clean,speculative,10,true,77.84,1.00,72,7,6,13837,54364,54.8
-clean,speculative-heuristic,1,true,72.07,0.99,36,0,4,11802,44450,48.8
-clean,speculative-heuristic,2,true,77.89,1.00,28,0,4,12159,45010,45.9
-clean,speculative-heuristic,3,true,76.40,0.99,102,0,4,13056,44910,47.4
-clean,speculative-heuristic,4,true,88.75,1.00,114,0,4,14056,52598,46.9
-clean,speculative-heuristic,5,true,76.00,0.99,32,0,4,12428,49102,50.6
-clean,speculative-heuristic,6,true,70.83,0.99,36,0,4,11990,45010,50.3
-clean,speculative-heuristic,7,true,128.38,0.99,78,0,4,17751,77602,46.4
-clean,speculative-heuristic,8,true,76.54,0.99,78,0,4,12941,49102,50.7
-clean,speculative-heuristic,9,true,84.09,0.99,23,0,4,12984,56726,51.8
-clean,speculative-heuristic,10,true,77.60,1.00,72,7,6,13822,54400,54.9
+clean,speculative,1,true,72.15,1.00,36,0,4,11812,42324,46.9
+clean,speculative,2,true,77.89,1.00,18,0,4,12069,44024,45.0
+clean,speculative,3,true,76.40,0.99,90,0,4,12948,43732,46.4
+clean,speculative,4,true,88.82,0.99,90,0,4,13845,50476,45.3
+clean,speculative,5,true,74.70,0.99,20,0,5,12215,48100,50.5
+clean,speculative,6,true,71.02,1.00,24,0,4,11879,44024,49.2
+clean,speculative,7,true,128.38,0.99,78,0,4,17751,75792,45.5
+clean,speculative,8,true,76.45,0.99,54,0,4,12715,47140,48.9
+clean,speculative,9,true,84.19,0.99,35,0,4,13102,54552,50.2
+clean,speculative,10,true,78.47,1.00,54,0,4,12749,47144,47.7
+clean,speculative-heuristic,1,true,72.07,0.99,36,0,4,11802,44280,48.6
+clean,speculative-heuristic,2,true,77.89,1.00,28,0,4,12159,44840,45.7
+clean,speculative-heuristic,3,true,76.40,0.99,102,0,4,13056,44860,47.4
+clean,speculative-heuristic,4,true,88.75,1.00,114,0,4,14056,52396,46.8
+clean,speculative-heuristic,5,true,76.00,0.99,32,0,4,12428,48916,50.4
+clean,speculative-heuristic,6,true,71.02,1.00,36,0,4,11987,44840,50.0
+clean,speculative-heuristic,7,true,128.38,0.99,78,0,4,17751,77484,46.4
+clean,speculative-heuristic,8,true,76.54,0.99,78,0,4,12941,48916,50.5
+clean,speculative-heuristic,9,true,84.09,0.99,23,0,4,12984,56508,51.7
+clean,speculative-heuristic,10,true,78.50,0.99,78,0,4,12970,48920,49.3
 clean,centralized,1,true,78.80,1.00,78,0,4,383640,171591,440.4
 clean,centralized,2,true,76.29,1.00,78,3,5,369592,165879,438.7
 clean,centralized,3,true,74.38,0.99,105,0,4,359488,161623,437.9
@@ -29,26 +29,26 @@ clean,centralized,7,true,74.32,1.00,72,0,4,359700,161511,438.3
 clean,centralized,8,true,73.43,0.99,45,0,4,355372,159495,438.2
 clean,centralized,9,true,66.25,0.99,36,0,4,318340,143479,435.7
 clean,centralized,10,true,68.48,0.99,12,0,4,330132,148407,436.7
-slow,speculative,1,true,72.80,1.00,36,0,4,11765,42494,46.6
-slow,speculative,2,true,78.12,1.00,18,0,4,12098,43234,44.3
-slow,speculative,3,true,76.14,0.99,57,0,4,12753,48286,50.1
-slow,speculative,4,true,83.59,1.00,75,0,4,13168,50642,47.7
-slow,speculative,5,true,74.73,0.99,20,0,5,12220,48286,50.6
-slow,speculative,6,true,76.09,0.99,53,0,4,12455,43234,45.7
-slow,speculative,7,true,79.30,0.99,63,2,5,13374,49078,49.2
-slow,speculative,8,true,80.54,1.00,45,0,4,12964,47326,46.8
-slow,speculative,9,true,88.14,1.00,12,0,4,12899,50714,45.1
-slow,speculative,10,true,73.57,0.99,10,0,4,11805,43232,46.8
-slow,speculative-heuristic,1,true,72.70,0.99,36,0,4,11667,44450,48.2
-slow,speculative-heuristic,2,true,78.10,1.00,28,0,4,12188,45010,45.8
-slow,speculative-heuristic,3,true,76.19,1.00,81,0,4,12974,49102,50.9
-slow,speculative-heuristic,4,true,83.27,0.99,63,0,4,13156,52598,49.4
-slow,speculative-heuristic,5,true,76.25,0.99,32,0,4,12448,49102,50.4
-slow,speculative-heuristic,6,true,76.17,0.99,77,0,4,12681,45010,47.3
-slow,speculative-heuristic,7,true,79.87,0.99,87,2,5,13811,53170,52.4
-slow,speculative-heuristic,8,true,80.59,0.99,69,0,4,13072,49102,48.2
-slow,speculative-heuristic,9,true,88.14,1.00,24,0,4,13007,52634,46.5
-slow,speculative-heuristic,10,true,73.57,0.99,34,0,4,11877,45008,48.3
+slow,speculative,1,true,72.80,1.00,36,0,4,11765,42324,46.4
+slow,speculative,2,true,78.12,1.00,18,0,4,12098,43064,44.1
+slow,speculative,3,true,76.14,0.99,57,0,4,12753,48100,50.0
+slow,speculative,4,true,83.59,1.00,75,0,4,13168,50440,47.6
+slow,speculative,5,true,74.73,0.99,20,0,5,12220,48100,50.4
+slow,speculative,6,true,76.09,0.99,53,0,4,12455,43064,45.6
+slow,speculative,7,true,79.30,0.99,63,2,5,13374,48892,49.1
+slow,speculative,8,true,80.54,1.00,45,0,4,12964,47140,46.6
+slow,speculative,9,true,88.14,1.00,12,0,4,12899,50512,45.0
+slow,speculative,10,true,73.53,1.00,10,0,4,11688,43068,46.5
+slow,speculative-heuristic,1,true,72.70,0.99,36,0,4,11667,44280,48.1
+slow,speculative-heuristic,2,true,78.10,1.00,28,0,4,12188,44840,45.6
+slow,speculative-heuristic,3,true,76.19,1.00,81,0,4,12974,48916,50.8
+slow,speculative-heuristic,4,true,83.27,0.99,63,0,4,13156,52396,49.2
+slow,speculative-heuristic,5,true,76.25,0.99,32,0,4,12448,48916,50.3
+slow,speculative-heuristic,6,true,76.17,0.99,77,0,4,12681,44840,47.2
+slow,speculative-heuristic,7,true,79.87,0.99,87,2,5,13811,52968,52.3
+slow,speculative-heuristic,8,true,80.59,0.99,69,0,4,13072,48916,48.1
+slow,speculative-heuristic,9,true,88.14,1.00,24,0,4,13007,52432,46.4
+slow,speculative-heuristic,10,true,73.57,0.99,34,0,4,11859,44844,48.2
 slow,centralized,1,true,72.08,1.00,34,0,4,347644,156226,436.9
 slow,centralized,2,true,71.55,0.99,12,0,4,344364,155085,436.3
 slow,centralized,3,true,73.72,1.00,84,0,4,355348,159838,436.8
@@ -59,26 +59,26 @@ slow,centralized,7,true,72.10,1.00,60,0,4,348172,156261,437.3
 slow,centralized,8,true,71.53,1.00,36,0,4,345496,155064,437.3
 slow,centralized,9,true,72.62,1.00,14,0,4,350496,157430,437.2
 slow,centralized,10,true,85.17,0.98,76,2,4,415140,185465,440.7
-lossy,speculative,1,true,76.49,0.99,36,0,4,12765,69503,67.2
-lossy,speculative,2,true,70.90,0.99,24,0,4,12428,65846,69.0
-lossy,speculative,3,true,74.63,1.00,76,1,4,13474,69468,69.5
-lossy,speculative,4,true,72.42,0.99,65,0,4,12946,60502,63.4
-lossy,speculative,5,true,75.62,1.00,20,0,5,12854,74568,72.3
-lossy,speculative,6,true,76.67,0.99,65,0,4,13027,64398,63.1
-lossy,speculative,7,true,80.30,1.00,98,0,4,13801,71385,66.3
-lossy,speculative,8,true,79.07,0.99,62,0,4,13448,72974,68.3
-lossy,speculative,9,true,70.12,0.99,36,0,4,11913,62678,66.5
-lossy,speculative,10,true,76.02,0.99,20,0,4,12133,66927,65.0
-lossy,speculative-heuristic,1,true,76.30,0.99,36,0,4,12682,72231,69.6
-lossy,speculative-heuristic,2,true,70.98,0.99,36,0,4,12514,68034,70.9
-lossy,speculative-heuristic,3,true,74.45,1.00,88,1,4,13406,68504,68.8
-lossy,speculative-heuristic,4,true,72.28,0.99,89,0,4,12918,61236,64.1
-lossy,speculative-heuristic,5,true,77.10,0.99,32,0,4,13062,77503,73.4
-lossy,speculative-heuristic,6,true,76.67,0.99,77,0,4,13135,65739,64.3
-lossy,speculative-heuristic,7,true,78.97,1.00,106,0,4,13685,68486,65.0
-lossy,speculative-heuristic,8,true,79.35,0.99,74,0,4,13526,73925,68.9
-lossy,speculative-heuristic,9,true,70.58,0.99,36,0,4,11959,65067,68.2
-lossy,speculative-heuristic,10,true,76.04,1.00,30,0,4,12234,69550,67.2
+lossy,speculative,1,true,76.49,0.99,36,0,4,12765,69226,67.0
+lossy,speculative,2,true,70.90,0.99,24,0,4,12428,65584,68.8
+lossy,speculative,3,true,74.63,1.00,76,1,4,13474,69214,69.2
+lossy,speculative,4,true,72.38,0.99,89,0,4,12869,59376,62.4
+lossy,speculative,5,true,75.62,1.00,20,0,5,12854,74264,72.0
+lossy,speculative,6,true,76.67,0.99,65,0,4,13027,64142,62.9
+lossy,speculative,7,true,80.30,1.00,98,0,4,13801,71110,66.1
+lossy,speculative,8,true,79.07,0.99,62,0,4,13448,72690,68.1
+lossy,speculative,9,true,70.12,0.99,36,0,4,11913,62428,66.3
+lossy,speculative,10,true,76.02,0.99,20,0,4,12133,66662,64.8
+lossy,speculative-heuristic,1,true,76.30,0.99,36,0,4,12682,71952,69.3
+lossy,speculative-heuristic,2,true,70.98,0.99,36,0,4,12514,67774,70.7
+lossy,speculative-heuristic,3,true,74.45,1.00,88,1,4,13406,68254,68.6
+lossy,speculative-heuristic,4,true,72.00,0.99,89,0,4,12781,63128,65.9
+lossy,speculative-heuristic,5,true,77.10,0.99,32,0,4,13062,77200,73.2
+lossy,speculative-heuristic,6,true,76.67,0.99,77,0,4,13135,65482,64.1
+lossy,speculative-heuristic,7,true,78.97,1.00,106,0,4,13685,68350,64.9
+lossy,speculative-heuristic,8,true,79.35,0.99,74,0,4,13526,73648,68.7
+lossy,speculative-heuristic,9,true,70.58,0.99,36,0,4,11959,64816,68.0
+lossy,speculative-heuristic,10,true,76.04,1.00,30,0,4,12234,69284,67.0
 lossy,centralized,1,true,77.09,0.99,24,0,4,374772,167643,439.8
 lossy,centralized,2,true,70.77,0.99,0,0,4,341252,153517,437.0
 lossy,centralized,3,true,73.72,0.99,105,0,4,356624,160132,438.1
@@ -89,28 +89,28 @@ lossy,centralized,7,true,72.67,0.99,111,0,4,351296,157773,437.8
 lossy,centralized,8,true,74.18,1.00,52,0,4,360268,161154,439.3
 lossy,centralized,9,true,66.08,0.99,36,0,4,318100,143010,436.1
 lossy,centralized,10,true,73.95,0.99,57,0,4,358352,160706,438.7
-slow+lossy,speculative,1,true,77.15,0.99,37,0,4,12713,66130,63.9
-slow+lossy,speculative,2,true,71.25,0.99,22,0,4,12172,61760,64.9
-slow+lossy,speculative,3,true,82.54,0.99,146,0,4,14583,71447,65.1
-slow+lossy,speculative,4,true,77.02,0.99,113,0,4,13477,63698,62.6
-slow+lossy,speculative,5,true,75.90,0.99,20,0,5,12744,69086,67.4
-slow+lossy,speculative,6,true,78.32,0.99,53,0,4,13140,65902,63.1
-slow+lossy,speculative,7,true,79.25,1.00,72,2,4,13748,70247,66.2
-slow+lossy,speculative,8,true,87.07,0.99,42,0,4,14012,76614,65.1
-slow+lossy,speculative,9,true,94.41,0.99,76,0,4,14656,79224,62.2
-slow+lossy,speculative,10,true,87.45,1.00,62,0,4,14028,77640,65.5
-slow+lossy,speculative-heuristic,1,true,76.39,1.00,35,0,4,12665,69454,67.2
-slow+lossy,speculative-heuristic,2,true,71.32,1.00,34,0,4,12340,64434,67.3
-slow+lossy,speculative-heuristic,3,true,82.54,0.99,146,0,4,14583,71735,65.4
-slow+lossy,speculative-heuristic,4,true,77.25,1.00,113,0,4,13656,68481,66.5
-slow+lossy,speculative-heuristic,5,true,77.79,0.99,32,0,4,13119,74417,70.3
-slow+lossy,speculative-heuristic,6,true,77.62,0.99,77,0,4,13244,68028,65.4
-slow+lossy,speculative-heuristic,7,true,81.10,1.00,85,2,4,13860,70299,64.9
-slow+lossy,speculative-heuristic,8,true,87.90,0.99,66,0,4,14238,76979,64.9
-slow+lossy,speculative-heuristic,9,true,94.04,0.99,64,0,4,14531,81786,64.0
-slow+lossy,speculative-heuristic,10,true,87.45,0.99,74,0,4,14090,77493,65.5
+slow+lossy,speculative,1,true,77.15,0.99,37,0,4,12713,65872,63.7
+slow+lossy,speculative,2,true,71.25,0.99,22,0,4,12172,61520,64.6
+slow+lossy,speculative,3,true,82.54,0.99,146,0,4,14583,71184,64.9
+slow+lossy,speculative,4,true,77.02,0.99,113,0,4,13477,63434,62.4
+slow+lossy,speculative,5,true,75.90,0.99,20,0,5,12744,68806,67.2
+slow+lossy,speculative,6,true,78.32,0.99,53,0,4,13140,65640,62.9
+slow+lossy,speculative,7,true,79.25,1.00,72,2,4,13748,69978,66.0
+slow+lossy,speculative,8,true,87.07,0.99,42,0,4,14012,76310,64.8
+slow+lossy,speculative,9,true,94.41,0.99,76,0,4,14656,78916,61.9
+slow+lossy,speculative,10,true,87.45,1.00,62,0,4,14028,77338,65.3
+slow+lossy,speculative-heuristic,1,true,76.39,1.00,35,0,4,12665,69192,67.0
+slow+lossy,speculative-heuristic,2,true,71.32,1.00,34,0,4,12340,64188,67.1
+slow+lossy,speculative-heuristic,3,true,82.54,0.99,146,0,4,14583,71640,65.3
+slow+lossy,speculative-heuristic,4,true,77.25,1.00,113,0,4,13656,68210,66.2
+slow+lossy,speculative-heuristic,5,true,77.79,0.99,32,0,4,13119,74126,70.1
+slow+lossy,speculative-heuristic,6,true,77.62,0.99,77,0,4,13244,67762,65.2
+slow+lossy,speculative-heuristic,7,true,81.10,1.00,85,2,4,13860,70030,64.6
+slow+lossy,speculative-heuristic,8,true,87.90,0.99,66,0,4,14238,76678,64.6
+slow+lossy,speculative-heuristic,9,true,94.04,0.99,64,0,4,14531,81476,63.8
+slow+lossy,speculative-heuristic,10,true,87.45,0.99,74,0,4,14090,77196,65.2
 slow+lossy,centralized,1,true,72.23,1.00,34,0,4,349028,156576,437.5
-slow+lossy,centralized,2,true,75.23,1.00,36,0,4,363088,163219,437.2
+slow+lossy,centralized,2,true,75.50,0.99,36,0,4,364464,163891,437.4
 slow+lossy,centralized,3,true,84.52,1.00,114,0,4,410840,183995,439.9
 slow+lossy,centralized,4,true,73.17,1.00,65,0,4,354032,158473,437.8
 slow+lossy,centralized,5,true,80.02,0.99,12,0,4,388612,173957,439.4
@@ -119,56 +119,56 @@ slow+lossy,centralized,7,true,78.19,1.00,62,0,4,378864,169855,438.6
 slow+lossy,centralized,8,true,75.32,0.99,26,0,4,364116,163443,437.8
 slow+lossy,centralized,9,true,80.84,1.00,36,0,4,392604,175770,439.4
 slow+lossy,centralized,10,true,74.02,0.99,36,0,4,357364,160468,437.3
-disrupted,speculative,1,true,77.92,0.99,54,0,5,13127,43242,45.2
-disrupted,speculative,2,true,86.69,0.99,53,0,5,13436,46886,43.5
-disrupted,speculative,3,true,76.70,0.99,42,0,5,13333,43266,46.1
-disrupted,speculative,4,true,88.99,1.00,60,0,5,14413,50930,45.9
-disrupted,speculative,5,true,81.55,0.99,66,0,5,13755,47322,46.8
-disrupted,speculative,6,true,79.27,1.00,82,0,5,13822,47322,48.2
-disrupted,speculative,7,true,117.19,0.99,48,0,5,16999,68346,45.5
-disrupted,speculative,8,true,79.52,1.00,54,0,5,13383,46970,47.4
-disrupted,speculative,9,true,90.19,1.00,43,0,6,14194,55482,48.3
-disrupted,speculative,10,true,82.50,0.99,102,0,5,14636,53068,51.3
-disrupted,speculative-heuristic,1,true,77.92,0.99,48,0,5,13073,44730,46.4
-disrupted,speculative-heuristic,2,true,86.04,1.00,28,0,5,13206,51166,46.8
-disrupted,speculative-heuristic,3,true,76.64,0.99,60,0,5,13666,48798,50.9
-disrupted,speculative-heuristic,4,true,88.99,1.00,54,0,5,14359,51962,46.6
-disrupted,speculative-heuristic,5,true,81.50,0.99,44,0,5,13408,47954,47.1
-disrupted,speculative-heuristic,6,true,79.44,0.99,60,0,5,13495,47954,48.3
-disrupted,speculative-heuristic,7,true,117.19,0.99,48,0,5,16999,69462,46.1
-disrupted,speculative-heuristic,8,true,79.00,0.99,36,0,5,13181,47990,48.4
-disrupted,speculative-heuristic,9,true,106.54,0.99,41,1,6,15773,60146,44.5
-disrupted,speculative-heuristic,10,true,81.60,0.99,42,0,5,13882,53192,51.4
+disrupted,speculative,1,true,77.92,0.99,54,0,5,13127,43072,45.1
+disrupted,speculative,2,true,86.69,0.99,53,0,5,13436,46700,43.4
+disrupted,speculative,3,true,76.70,0.99,42,0,5,13333,43096,46.0
+disrupted,speculative,4,true,88.99,1.00,60,0,5,14413,50728,45.8
+disrupted,speculative,5,true,81.55,0.99,66,0,5,13755,47136,46.7
+disrupted,speculative,6,true,79.27,1.00,82,0,5,13804,47136,48.0
+disrupted,speculative,7,true,117.19,0.99,48,0,5,16999,68080,45.4
+disrupted,speculative,8,true,79.52,1.00,54,0,5,13383,46784,47.3
+disrupted,speculative,9,true,90.19,1.00,43,0,6,14194,55264,48.1
+disrupted,speculative,10,true,80.74,1.00,72,0,5,13542,50380,49.5
+disrupted,speculative-heuristic,1,true,77.92,0.99,48,0,5,13073,44560,46.2
+disrupted,speculative-heuristic,2,true,86.04,1.00,28,0,5,13206,50964,46.6
+disrupted,speculative-heuristic,3,true,76.64,0.99,60,0,5,13666,48612,50.8
+disrupted,speculative-heuristic,4,true,88.99,1.00,54,0,5,14359,51760,46.4
+disrupted,speculative-heuristic,5,true,81.50,0.99,44,0,5,13408,47768,46.9
+disrupted,speculative-heuristic,6,true,79.44,0.99,60,0,5,13477,47768,48.2
+disrupted,speculative-heuristic,7,true,117.19,0.99,48,0,5,16999,69316,46.0
+disrupted,speculative-heuristic,8,true,79.00,0.99,36,0,5,13181,47804,48.2
+disrupted,speculative-heuristic,9,true,106.54,0.99,41,1,6,15773,59912,44.4
+disrupted,speculative-heuristic,10,true,79.70,0.99,36,0,5,13133,50968,50.3
 disrupted,centralized,1,true,75.99,0.99,24,0,5,369096,165207,439.5
 disrupted,centralized,2,true,78.69,0.99,70,0,5,381796,171255,439.3
 disrupted,centralized,3,true,76.85,0.99,54,0,5,372056,167223,438.6
-disrupted,centralized,4,true,75.28,0.99,54,0,5,365804,163639,439.5
+disrupted,centralized,4,true,75.17,0.99,42,0,5,365132,163415,439.5
 disrupted,centralized,5,true,77.12,0.99,36,0,5,374416,167783,439.4
 disrupted,centralized,6,true,76.60,0.99,48,0,5,371832,166663,439.4
 disrupted,centralized,7,true,79.34,0.99,78,0,5,385364,172711,439.6
 disrupted,centralized,8,true,78.27,0.99,90,0,5,380120,170359,439.6
 disrupted,centralized,9,true,75.30,0.99,58,0,5,365240,163751,439.1
-disrupted,centralized,10,true,76.80,0.99,60,0,5,372836,167111,439.4
-outage 20-30s,speculative,1,true,73.48,0.99,48,0,4,12182,42470,46.5
-outage 20-30s,speculative,2,true,82.49,1.00,18,0,4,12979,43234,42.6
-outage 20-30s,speculative,3,true,79.97,0.99,120,0,4,14088,43902,45.3
-outage 20-30s,speculative,4,true,89.74,1.00,108,0,4,14631,50714,45.5
-outage 20-30s,speculative,5,true,73.98,0.99,20,0,4,12267,43234,46.9
-outage 20-30s,speculative,6,true,79.50,0.99,72,0,5,13977,46898,47.9
-outage 20-30s,speculative,7,true,105.72,1.00,43,0,4,15336,60442,44.8
-outage 20-30s,speculative,8,true,78.49,1.00,54,0,4,13145,43234,44.9
-outage 20-30s,speculative,9,true,97.59,1.00,133,6,5,15634,52790,43.8
-outage 20-30s,speculative,10,true,81.02,1.00,18,10,4,12970,43232,43.4
-outage 20-30s,speculative-heuristic,1,true,73.28,0.99,36,0,4,12235,44450,48.3
-outage 20-30s,speculative-heuristic,2,true,82.49,1.00,28,0,4,13069,45010,44.0
-outage 20-30s,speculative-heuristic,3,true,79.97,0.99,132,0,4,14196,44910,46.2
-outage 20-30s,speculative-heuristic,4,true,89.74,1.00,120,0,4,14739,52634,46.9
-outage 20-30s,speculative-heuristic,5,true,73.98,0.99,32,0,4,12375,45010,48.5
-outage 20-30s,speculative-heuristic,6,true,72.95,0.99,60,0,5,13272,46218,51.0
-outage 20-30s,speculative-heuristic,7,true,107.44,0.99,79,0,4,15795,61330,44.9
-outage 20-30s,speculative-heuristic,8,true,78.57,1.00,78,0,4,13366,45010,46.4
-outage 20-30s,speculative-heuristic,9,true,97.59,1.00,133,6,5,15634,53150,44.1
-outage 20-30s,speculative-heuristic,10,true,81.12,1.00,42,10,4,13196,45008,44.8
+disrupted,centralized,10,true,76.60,0.99,36,0,5,371812,166663,439.3
+outage 20-30s,speculative,1,true,73.48,0.99,48,0,4,12182,42300,46.3
+outage 20-30s,speculative,2,true,82.49,1.00,18,0,4,12979,43064,42.5
+outage 20-30s,speculative,3,true,79.97,0.99,120,0,4,14088,43732,45.2
+outage 20-30s,speculative,4,true,89.74,1.00,108,0,4,14631,50512,45.4
+outage 20-30s,speculative,5,true,73.98,0.99,20,0,4,12267,43064,46.7
+outage 20-30s,speculative,6,true,79.50,0.99,72,0,5,13959,46784,47.8
+outage 20-30s,speculative,7,true,105.72,1.00,43,0,4,15336,60208,44.7
+outage 20-30s,speculative,8,true,78.49,1.00,54,0,4,13145,43064,44.8
+outage 20-30s,speculative,9,true,97.59,1.00,133,6,5,15634,52588,43.7
+outage 20-30s,speculative,10,true,79.59,0.99,54,0,4,13077,43068,44.1
+outage 20-30s,speculative-heuristic,1,true,73.28,0.99,36,0,4,12235,44280,48.2
+outage 20-30s,speculative-heuristic,2,true,82.49,1.00,28,0,4,13069,44840,43.9
+outage 20-30s,speculative-heuristic,3,true,79.97,0.99,132,0,4,14196,44860,46.2
+outage 20-30s,speculative-heuristic,4,true,89.74,1.00,120,0,4,14739,52432,46.8
+outage 20-30s,speculative-heuristic,5,true,73.98,0.99,32,0,4,12375,44840,48.3
+outage 20-30s,speculative-heuristic,6,true,72.95,1.00,60,0,5,13254,46056,50.8
+outage 20-30s,speculative-heuristic,7,true,107.44,0.99,79,0,4,15795,61096,44.7
+outage 20-30s,speculative-heuristic,8,true,78.57,1.00,78,0,4,13366,44840,46.3
+outage 20-30s,speculative-heuristic,9,true,97.59,1.00,133,6,5,15634,53020,44.0
+outage 20-30s,speculative-heuristic,10,true,79.59,0.99,78,0,4,13293,44844,45.7
 outage 20-30s,centralized,1,true,87.99,1.00,78,0,4,386104,169799,394.9
 outage 20-30s,centralized,2,true,85.69,1.00,78,3,5,373176,164647,392.3
 outage 20-30s,centralized,3,true,85.50,0.99,105,0,4,371872,164199,391.8

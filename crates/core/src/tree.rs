@@ -90,13 +90,17 @@ pub struct ContingencyTree {
     /// Node 0 is the entry node.
     pub nodes: Vec<Node>,
     /// Traffic permit when the tree was built: robots may advance up to this
-    /// node (255 = no limit). Later changes arrive as permit messages.
+    /// node (255 = no limit, which costs no bytes on the wire). Later changes
+    /// arrive as permit messages.
     pub permit: NodeId,
     /// Transit route for a robot that isn't gripping and can't drive
     /// straight to its payload (walls in the way): waypoints to follow before
     /// the final approach. Usually empty.
     pub via: Vec<V2>,
 }
+
+/// Role-byte flag: a traffic permit byte follows the nodes.
+const HAS_PERMIT: u8 = 0x80;
 
 impl ContingencyTree {
     pub fn has_stall_edge(&self, node: NodeId) -> bool {
@@ -111,10 +115,15 @@ impl ContingencyTree {
         let mut w = Vec::with_capacity(64);
         w.extend_from_slice(&self.version.to_le_bytes());
         w.extend_from_slice(&((self.valid_until * 1000.0) as u32).to_le_bytes());
-        w.push(match self.role {
-            Role::Pusher => 0,
-            Role::Steerer => 1,
-        });
+        // The role byte's top bit says a traffic permit follows at the end,
+        // so trees with no traffic limit (most of them) don't pay for one.
+        let limited = self.permit != NodeId::MAX;
+        w.push(
+            match self.role {
+                Role::Pusher => 0,
+                Role::Steerer => 1,
+            } | if limited { HAS_PERMIT } else { 0 },
+        );
         w.push(self.team);
         put_pos(&mut w, self.slot);
         w.push(self.nodes.len() as u8);
@@ -165,7 +174,9 @@ impl ContingencyTree {
                 w.push(e.to);
             }
         }
-        w.push(self.permit);
+        if limited {
+            w.push(self.permit);
+        }
         w.push(self.via.len() as u8);
         for p in &self.via {
             put_pos(&mut w, *p);
@@ -177,7 +188,8 @@ impl ContingencyTree {
         let mut r = Reader { b: bytes, i: 0 };
         let version = u32::from_le_bytes(r.take(4)?.try_into().ok()?);
         let valid_until = u32::from_le_bytes(r.take(4)?.try_into().ok()?) as f32 / 1000.0;
-        let role = match r.u8()? {
+        let role_byte = r.u8()?;
+        let role = match role_byte & !HAS_PERMIT {
             0 => Role::Pusher,
             1 => Role::Steerer,
             _ => return None,
@@ -232,7 +244,11 @@ impl ContingencyTree {
             }
             nodes.push(Node { action, edges });
         }
-        let permit = r.u8()?;
+        let permit = if role_byte & HAS_PERMIT != 0 {
+            r.u8()?
+        } else {
+            NodeId::MAX
+        };
         let n_via = r.u8()?;
         let via = (0..n_via).map(|_| r.pos()).collect::<Option<Vec<_>>>()?;
         Some(Self {
@@ -349,6 +365,19 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn an_unlimited_permit_costs_no_bytes() {
+        let limited = sample();
+        let free = ContingencyTree {
+            permit: NodeId::MAX,
+            ..sample()
+        };
+        assert_eq!(free.encode().len() + 1, limited.encode().len());
+        let d = ContingencyTree::decode(&free.encode()).expect("decodes");
+        assert_eq!(d.permit, NodeId::MAX);
+        assert_eq!(d.role, free.role);
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub struct Ui<'a> {
     pub speed: usize,
     pub selected: Option<usize>,
     pub help: &'a [&'a str],
+    pub overlays: super::Overlays,
 }
 
 /// A tiny cursor for stacking lines of text.
@@ -115,11 +116,16 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
         let delivered = (0..n).filter(|&k| s.swarm.delivered(k)).count();
         c.line(
             &format!(
-                "delivered {delivered}/{n}  door waits {}  traffic waits {}  reroutes {}  lent {}",
-                edge.stats.zone_waits,
-                edge.stats.traffic_waits,
-                edge.stats.reroutes,
-                edge.stats.reassigned
+                "delivered {delivered}/{n}  door waits {}  lent {}",
+                edge.stats.zone_waits, edge.stats.reassigned
+            ),
+            18.0,
+            TEXT,
+        );
+        c.line(
+            &format!(
+                "traffic: waits {}  reroutes {}  make-way {}",
+                edge.stats.traffic_waits, edge.stats.reroutes, edge.stats.detours
             ),
             18.0,
             TEXT,
@@ -173,13 +179,14 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
 fn legend(c: &mut Col) {
     c.gap(4.0);
     c.line("LEGEND", 15.0, FAINT);
-    let items: [(Color, &str); 11] = [
+    let items: [(Color, &str); 12] = [
         (PUSHER, "pusher"),
         (STEERER, "steerer"),
         (REFLEX, "reflex, no tree"),
         (REMOTE, "remote-controlled"),
         (PARKED, "parked (delivered)"),
         (SPEC, "tree packet"),
+        (RISK, "permit packet"),
         (CENT, "command packet"),
         (DIM, "status packet"),
         (MISS, "surprise / lost (x)"),
@@ -208,6 +215,22 @@ fn help(c: &mut Col, ui: &Ui) {
     for h in ui.help {
         c.line(h, 15.0, DIM);
     }
+    // Which overlays are on, so a toggle with nothing to draw yet doesn't
+    // look like a dead key.
+    let ov = ui.overlays;
+    let mut x = c.x;
+    c.y += 2.0;
+    for (on, key, name) in [
+        (ov.ghosts, "T", "ghosts"),
+        (ov.packets, "P", "packets"),
+        (ov.heat, "H", "heat"),
+        (ov.risks, "K", "risks"),
+    ] {
+        let text = format!("{key} {name} {}", if on { "on" } else { "off" });
+        draw_text(&text, x, c.y, 15.0, if on { HIT } else { FAINT });
+        x += super::text_width(&text, 15.0) + 14.0;
+    }
+    c.y += 18.0;
     if ui.paused {
         c.line("PAUSED", 22.0, STEERER);
     } else if ui.speed > 1 {

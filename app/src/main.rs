@@ -277,6 +277,11 @@ async fn main() {
         .position(|a| a == "--select")
         .and_then(|i| args.get(i + 1))
         .and_then(|v| v.parse().ok());
+    // `--shot <file.png> <seconds>`: run to that sim time, save a screenshot, quit.
+    let shot: Option<(String, f32)> = args
+        .iter()
+        .position(|a| a == "--shot")
+        .and_then(|i| Some((args.get(i + 1)?.clone(), args.get(i + 2)?.parse().ok()?)));
     let mut acc = 0.0;
     loop {
         let (rects, panel_rect) = app.layout();
@@ -287,7 +292,15 @@ async fn main() {
             .collect();
         handle_input(&mut app, &views);
 
-        if !app.paused {
+        let shot_due = shot
+            .as_ref()
+            .is_some_and(|(_, at)| app.panes.iter().all(|p| p.session.t() >= *at));
+        if shot.is_some() {
+            // Real time: the edge runs on its own thread, so fast-forwarding
+            // would make its replies late in sim time and change the run.
+            app.speed = 1;
+        }
+        if !app.paused && !shot_due {
             acc += get_frame_time().min(0.1) * app.speed as f32;
             while acc >= DT {
                 for p in &mut app.panes {
@@ -318,11 +331,16 @@ async fn main() {
             speed: app.speed,
             selected: app.selected,
             help: HELP,
+            overlays: app.overlays,
         };
         if app.comparing() {
             panel::compare(panel_rect, &app.panes, &edges, &ui);
         } else {
             panel::single(panel_rect, &app.panes[0], &edges[0], &ui);
+        }
+        if let Some((path, _)) = shot.as_ref().filter(|_| shot_due) {
+            get_screen_data().export_png(path);
+            break;
         }
         next_frame().await;
     }
