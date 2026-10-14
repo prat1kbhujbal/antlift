@@ -1,0 +1,28 @@
+[package]
+name = "antlift"
+description = "Interactive AntLift demo: swarm + edge server on one laptop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "antlift"
+
+[dependencies]
+antlift-core.workspace = true
+antlift-net.workspace = true
+antlift-sim.workspace = true
+antlift-edge.workspace = true
+macroquad.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+
+[lib]
+name = "antlift_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "antlift"
+path = "src/main.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
