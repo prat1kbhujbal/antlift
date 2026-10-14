@@ -36,6 +36,7 @@ name = "antlift-edge"
 version = "0.1.0"
 dependencies = [
  "antlift-core",
+ "antlift-sim",
 ]
 
 [[package]]

@@ -56,6 +56,14 @@ impl Swarm {
         }
     }
 
+    /// A swarm starting from a camera snapshot (see [`SimWorld::from_snapshot`]).
+    pub fn from_snapshot(layout: Layout, snap: &Snapshot, control: ControlMode) -> Self {
+        let mut s = Self::new(layout, control);
+        s.world = SimWorld::from_snapshot(&s.layout, snap);
+        s.t = snap.t;
+        s
+    }
+
     /// Advance one tick. `downlinks` are messages that arrived this tick; the
     /// return value is robot radio traffic produced this tick.
     pub fn step(&mut self, dt: f32, downlinks: Vec<Downlink>) -> Vec<Uplink> {

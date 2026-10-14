@@ -2,7 +2,7 @@
 //!
 //! Top-down 2D with no gravity; floor friction is modelled with damping.
 
-use antlift_core::{Aabb, Layout, ObjectState, V2};
+use antlift_core::{Aabb, Layout, ObjectState, Snapshot, V2};
 use rapier2d::prelude::*;
 
 pub use antlift_core::ROBOT_RADIUS;
@@ -90,6 +90,36 @@ impl SimWorld {
             robots,
             crates: Vec::new(),
         }
+    }
+
+    /// Rebuild a world from what the edge's camera saw: the payload's pose
+    /// and velocity, robot positions and grips, and dropped crates. This is
+    /// the edge's model of the present, used to simulate possible futures.
+    pub fn from_snapshot(layout: &Layout, snap: &Snapshot) -> Self {
+        let mut w = Self::new(&Layout {
+            object_start: snap.object.pos,
+            object_start_angle: snap.object.angle,
+            n_robots: snap.robots.len(),
+            ..layout.clone()
+        });
+        {
+            let b = &mut w.physics.bodies[w.object];
+            b.set_linvel(v(snap.object.vel), true);
+            b.set_angvel(snap.object.angvel, true);
+        }
+        for (i, r) in snap.robots.iter().enumerate() {
+            let h = w.robots[i].handle;
+            w.physics.bodies[h].set_translation(v(r.pos), true);
+            if !r.active {
+                w.disable_robot(i);
+            } else if r.attached {
+                w.grip(i);
+            }
+        }
+        for o in &snap.obstacles {
+            w.add_crate(o.center());
+        }
+        w
     }
 
     pub fn step(&mut self, dt: f32) {

@@ -10,6 +10,7 @@
 //! robot's brain itself on streamed robot state and sends force commands.
 
 pub mod grid;
+pub mod rollout;
 
 use antlift_core::{
     axis_error, Aabb, Action, Brain, ContingencyTree, ControlMode, DownBody, Downlink, Edge, Event,
@@ -17,6 +18,7 @@ use antlift_core::{
     SLOT_OFFSET, V2,
 };
 use grid::{Footprint, Grid, Pose};
+use rollout::Ghost;
 use std::f32::consts::FRAC_PI_2;
 use std::time::Instant;
 
@@ -33,6 +35,11 @@ pub struct EdgeConfig {
     /// Resend a tree if it isn't acknowledged within this long (s).
     pub resend_after: f32,
     pub control: ControlMode,
+    /// Simulate "what if" futures to estimate contingency probabilities
+    /// (ghost futures); otherwise use heuristic priors only.
+    pub ghosts: bool,
+    /// How far ahead each ghost future is simulated (s).
+    pub ghost_horizon: f32,
     /// Centralized mode: command rate (s).
     pub command_period: f32,
 }
@@ -46,6 +53,8 @@ impl Default for EdgeConfig {
             horizon: 8,
             resend_after: 0.4,
             control: ControlMode::Speculative,
+            ghosts: true,
+            ghost_horizon: 10.0,
             command_period: 0.05,
         }
     }
@@ -97,6 +106,8 @@ pub struct Plan {
     pub path: Vec<V2>,
     pub waypoints: Vec<Waypoint>,
     pub candidates: Vec<Candidate>,
+    /// The simulated futures this plan's probabilities were learned from.
+    pub ghosts: Vec<Ghost>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -664,9 +675,68 @@ impl EdgeServer {
             path,
             waypoints,
             candidates,
+            ghosts: vec![],
         });
+        if self.cfg.ghosts && self.plan.as_ref().is_some_and(|p| !p.waypoints.is_empty()) {
+            self.learn_from_ghosts(&s);
+        }
         self.stats.plans += 1;
         self.stats.last_plan_us = t0.elapsed().as_micros();
+    }
+
+    /// Simulate the futures with the trees robots would get under the
+    /// prior probabilities, then update each contingency's probability with
+    /// what actually happened in them (a Beta-style blend: the prior counts
+    /// as `PRIOR_WEIGHT` imaginary futures).
+    fn learn_from_ghosts(&mut self, snap: &Snapshot) {
+        const PRIOR_WEIGHT: f32 = 2.0;
+        let trees: Vec<Option<Vec<u8>>> = (0..self.robots.len())
+            .map(|id| {
+                let active = self.robots[id].active;
+                self.build_tree(id, snap.t)
+                    .filter(|_| active)
+                    .map(|t| t.encode())
+            })
+            .collect();
+        let ghosts = rollout::simulate_all(&self.layout, snap, &trees, self.cfg.ghost_horizon);
+
+        let plan = self.plan.as_mut().expect("plan just built");
+        let wps = &plan.waypoints[..plan.waypoints.len().min(self.cfg.horizon)];
+        let nearest = |p: V2| {
+            (0..wps.len()).min_by(|&a, &b| wps[a].pos.dist(p).total_cmp(&wps[b].pos.dist(p)))
+        };
+        let mut jams = vec![0.0f32; wps.len()];
+        let mut drifts = vec![0.0f32; wps.len()];
+        for g in &ghosts {
+            if let Some(i) = g.stall.and_then(nearest) {
+                jams[i] += 1.0;
+            }
+            let mut seen = vec![false; wps.len()];
+            for &(p, a) in &g.poses {
+                if let Some(i) = nearest(p) {
+                    if !seen[i] && axis_error(wps[i].heading, a).abs() > 0.35 {
+                        seen[i] = true;
+                        drifts[i] += 1.0;
+                    }
+                }
+            }
+        }
+        let n = ghosts.len() as f32;
+        for c in &mut plan.candidates {
+            if c.wp >= wps.len() {
+                continue;
+            }
+            let seen = match c.kind {
+                Contingency::Jam => jams[c.wp],
+                Contingency::Misalign => drifts[c.wp],
+                // Grip loss is injected in the futures, so they say nothing about it.
+                Contingency::GripLoss => continue,
+            };
+            c.p = (c.p * PRIOR_WEIGHT + seen) / (PRIOR_WEIGHT + n);
+        }
+        plan.candidates
+            .sort_by(|a, b| (b.p * b.kind.impact()).total_cmp(&(a.p * a.kind.impact())));
+        plan.ghosts = ghosts;
     }
 
     /// Nominal chain plus the most valuable contingencies that fit the budget,

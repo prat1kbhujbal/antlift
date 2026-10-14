@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 antlift-core.workspace = true
+antlift-sim.workspace = true
