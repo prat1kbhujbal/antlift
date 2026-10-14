@@ -66,12 +66,12 @@ Against a **centralized baseline that runs the identical decision code on the ed
 
 ![Latency sweep](docs/img/latency.png)
 
-- **6-9× less radio traffic** (50-70 vs about 440 B/robot/s) for the same time to goal on clean, slow and lossy links.
+- **6-9× less radio traffic** (45-70 vs about 440 B/robot/s) for about the same time to goal on clean, slow and lossy links.
 - **Flat under latency:** speculative delivers in 60-66 s from 0 to 1000 ms of one-way latency. Centralized slows from 200 ms and fails every run at 1 s.
 - **Survives edge outages** of up to 40 s in every run, with robots working through cached leases.
-- **Honest loss:** centralized is slightly faster when the payload is repeatedly kicked (72.8 vs 76.6 s).
-- **Warehouse** (3 payloads, 44 robots): every variant coordinates without deadlock, and speculative still uses about 8× less radio. Centralized is the most reliable there (50/50 vs 47-48/50): speculative's weak spot is a payload wedging in a doorway.
-- **Ghost futures** (probabilities from simulated futures rather than hand-written priors) didn't reliably change outcomes on either level. In the warehouse they had more surprises in four of five conditions. Details are in the design doc.
+- **Honest loss:** centralized is slightly faster when the payload is repeatedly kicked (75.2 vs 76.6 s).
+- **Warehouse** (3 payloads, 44 robots): speculative with heuristic priors is the best variant, delivering all 3 payloads in 50/50 runs, fastest in every condition (112-128 s) and with about 8× less radio. Centralized and ghost futures each fail 1 run in 50 and are slower.
+- **Ghost futures** (probabilities from simulated futures rather than hand-written priors) don't help: within noise on the doorway and clearly slower in the warehouse. Details are in the design doc.
 
 Building a fair baseline also exposed six real bugs, including a retransmit storm and a shared re-localization bug that had inflated early results. The methodology, every number, and that list are in [docs/design.md](docs/design.md#4-evaluation).
 
