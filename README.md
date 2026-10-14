@@ -2,8 +2,6 @@
 
 **Branch prediction for robot swarms.** A swarm of 16 robots carries a sofa along an S-shaped route through a factory hall: under a press line, up a narrow channel between machines, across the hall and into a loading dock. An edge server speculates on what might go wrong and ships each robot a tiny contingency tree, so robots react to predicted problems instantly and locally, and only call home when something surprises them.
 
-Everything (physics, robots, edge server, radio) runs on one laptop.
-
 ![Side-by-side: speculative (top) vs centralized (bottom)](docs/screenshot.png)
 
 *Side by side (`V`): the same scenario with the same clicks. Top: robots run their own contingency trees, with a trickle of radio packets. Bottom: the centralized baseline streams every command, so the radio is a constant cloud. Right: live comparison.*
@@ -156,4 +154,4 @@ results       benchmark output (CSV + summary)
 
 ## License
 
-MIT OR Apache-2.0
+Licensed under the [Apache License, Version 2.0](LICENSE).
