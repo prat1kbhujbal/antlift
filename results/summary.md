@@ -44,20 +44,20 @@
 
 | Condition | Control | All delivered | Time (s) | Payloads delivered | Radio (B/robot/s) | Door waits | Robots lent | Surprises |
 |---|---|---|---|---|---|---|---|---|
-| warehouse | speculative | 10/10 | 139.2 ± 14.7 | 3.00 / 3 | 47 | 17.1 | 8.8 | 4.8 |
-| warehouse | speculative-heuristic | 10/10 | 128.3 ± 15.6 | 3.00 / 3 | 48 | 16.8 | 8.9 | 5.2 |
-| warehouse | centralized | 10/10 | 131.5 ± 13.4 | 3.00 / 3 | 449 | 14.7 | 8.7 | 44.5 |
-| warehouse slow | speculative | 10/10 | 153.4 ± 26.2 | 3.00 / 3 | 47 | 23.9 | 9.3 | 12.6 |
-| warehouse slow | speculative-heuristic | 10/10 | 116.6 ± 9.6 | 3.00 / 3 | 50 | 18.7 | 9.0 | 0.0 |
-| warehouse slow | centralized | 9/10 | 166.8 ± 15.3 | 2.80 / 3 | 445 | 23.5 | 9.4 | 14.4 |
-| warehouse lossy | speculative | 10/10 | 163.0 ± 55.9 | 3.00 / 3 | 63 | 21.6 | 8.8 | 64.0 |
-| warehouse lossy | speculative-heuristic | 10/10 | 111.9 ± 5.0 | 3.00 / 3 | 71 | 27.2 | 8.9 | 0.0 |
-| warehouse lossy | centralized | 10/10 | 142.2 ± 19.0 | 3.00 / 3 | 448 | 30.9 | 8.9 | 47.8 |
-| warehouse attrition | speculative | 9/10 | 166.2 ± 33.9 | 2.70 / 3 | 40 | 27.0 | 11.6 | 53.3 |
-| warehouse attrition | speculative-heuristic | 10/10 | 124.3 ± 10.3 | 3.00 / 3 | 42 | 17.6 | 9.9 | 2.6 |
-| warehouse attrition | centralized | 10/10 | 132.7 ± 7.2 | 3.00 / 3 | 368 | 21.5 | 11.6 | 0.0 |
-| warehouse outage | speculative | 10/10 | 147.3 ± 25.9 | 3.00 / 3 | 44 | 11.8 | 9.0 | 6.5 |
-| warehouse outage | speculative-heuristic | 10/10 | 120.4 ± 9.3 | 3.00 / 3 | 46 | 15.7 | 8.9 | 0.0 |
-| warehouse outage | centralized | 10/10 | 139.0 ± 7.5 | 3.00 / 3 | 434 | 21.5 | 8.8 | 37.5 |
+| warehouse | speculative | 10/10 | 148.1 ± 20.9 | 3.00 / 3 | 48 | 16.3 | 3.9 | 8.5 |
+| warehouse | speculative-heuristic | 10/10 | 116.3 ± 8.2 | 3.00 / 3 | 50 | 16.8 | 4.2 | 5.2 |
+| warehouse | centralized | 10/10 | 132.2 ± 10.8 | 3.00 / 3 | 449 | 14.7 | 1.1 | 3.6 |
+| warehouse slow | speculative | 10/10 | 141.7 ± 21.4 | 3.00 / 3 | 48 | 20.5 | 5.1 | 1.8 |
+| warehouse slow | speculative-heuristic | 10/10 | 114.5 ± 7.0 | 3.00 / 3 | 51 | 18.7 | 4.4 | 0.1 |
+| warehouse slow | centralized | 10/10 | 174.6 ± 18.7 | 3.00 / 3 | 444 | 19.3 | 2.3 | 0.0 |
+| warehouse lossy | speculative | 10/10 | 152.2 ± 35.0 | 3.00 / 3 | 63 | 21.6 | 5.0 | 48.7 |
+| warehouse lossy | speculative-heuristic | 10/10 | 110.9 ± 4.4 | 3.00 / 3 | 71 | 27.2 | 4.3 | 0.0 |
+| warehouse lossy | centralized | 10/10 | 147.5 ± 19.8 | 3.00 / 3 | 447 | 27.9 | 0.4 | 13.4 |
+| warehouse attrition | speculative | 8/10 | 144.0 ± 19.2 | 2.60 / 3 | 40 | 22.8 | 11.2 | 109.3 |
+| warehouse attrition | speculative-heuristic | 10/10 | 128.5 ± 10.2 | 3.00 / 3 | 42 | 18.0 | 8.9 | 2.6 |
+| warehouse attrition | centralized | 10/10 | 137.2 ± 12.3 | 3.00 / 3 | 366 | 15.9 | 8.5 | 3.2 |
+| warehouse outage | speculative | 10/10 | 148.2 ± 23.1 | 3.00 / 3 | 44 | 11.8 | 4.3 | 4.4 |
+| warehouse outage | speculative-heuristic | 10/10 | 122.4 ± 11.8 | 3.00 / 3 | 46 | 15.7 | 4.1 | 0.0 |
+| warehouse outage | centralized | 10/10 | 142.4 ± 10.0 | 3.00 / 3 | 434 | 25.3 | 0.7 | 0.0 |
 
 10 seeds per cell, 420 s limit. Time is until every payload is at its goal, over runs where that happened.

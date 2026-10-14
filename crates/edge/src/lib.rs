@@ -771,28 +771,34 @@ impl EdgeServer {
                     .filter(|r| r.active && r.team == k)
                     .count() as f32
             };
-            // Most in need first; ties go to the nearest payload. Full
-            // payloads take no more: the robot stays put.
-            let Some(target) = needy
+            // Most in need first; ties go to the nearest payload. A robot is
+            // only lent where a real grip spot is free (reserved right away);
+            // otherwise it stays with its delivered team and keeps getting
+            // that team's trees, rather than ending up with no tree at all.
+            let p = s.robots[i].pos;
+            let mut order: Vec<usize> = needy
                 .iter()
                 .copied()
                 .filter(|&k| (count(k) as usize) < self.capacity(k))
-                .min_by(|&a, &b| {
-                    let (na, nb) = (count(a) / area(a), count(b) / area(b));
-                    na.total_cmp(&nb).then_with(|| {
-                        let p = s.robots[i].pos;
-                        s.objects[a]
-                            .pos
-                            .dist(p)
-                            .total_cmp(&s.objects[b].pos.dist(p))
-                    })
+                .collect();
+            order.sort_by(|&a, &b| {
+                let (na, nb) = (count(a) / area(a), count(b) / area(b));
+                na.total_cmp(&nb).then_with(|| {
+                    s.objects[a]
+                        .pos
+                        .dist(p)
+                        .total_cmp(&s.objects[b].pos.dist(p))
                 })
+            });
+            let Some((target, slot)) = order
+                .into_iter()
+                .find_map(|k| self.find_gap(k, p).map(|slot| (k, slot)))
             else {
                 continue;
             };
             let old = self.robots[i].team;
             self.robots[i].team = target;
-            self.robots[i].slot = None;
+            self.robots[i].slot = Some(slot);
             self.stats.reassigned += 1;
             changed.push(old);
             changed.push(target);
@@ -800,6 +806,31 @@ impl EdgeServer {
         changed.sort_unstable();
         changed.dedup();
         changed
+    }
+
+    /// A free grip spot around payload `k` for a robot at `pos` (payload
+    /// frame), clear of every spot the team's robots grip or are assigned.
+    fn find_gap(&self, k: usize, pos: V2) -> Option<V2> {
+        let s = self.snapshot.as_ref()?;
+        let o = s.objects[k];
+        let local = |p: V2| (p - o.pos).rotate(-o.angle);
+        let taken: Vec<V2> = (0..self.robots.len())
+            .filter(|&i| self.robots[i].active && self.robots[i].team == k)
+            .filter_map(|i| {
+                let obs = &s.robots[i];
+                if obs.attached && obs.holding as usize == k {
+                    Some(local(obs.pos))
+                } else {
+                    self.robots[i].slot
+                }
+            })
+            .collect();
+        let gap = 2.0 * ROBOT_RADIUS + 0.05;
+        let me = local(pos);
+        perimeter_slots(o.half, (perimeter(o.half) / 0.1) as usize)
+            .into_iter()
+            .filter(|d| taken.iter().all(|t| t.dist(*d) > gap))
+            .min_by(|a, b| a.dist(me).total_cmp(&b.dist(me)))
     }
 
     fn bump_heat(&mut self, at: V2) {
@@ -825,16 +856,17 @@ impl EdgeServer {
         let members: Vec<usize> = (0..self.robots.len())
             .filter(|&i| self.robots[i].active && self.robots[i].team == k)
             .collect();
+        // Grips stay where they are, and spots already handed out (e.g. to
+        // robots just lent to this team) are kept, so nobody loses theirs.
         let mut taken: Vec<V2> = vec![];
         for &i in &members {
             let obs = &s.robots[i];
-            self.robots[i].slot = if obs.attached && obs.holding as usize == k {
-                let l = local(obs.pos);
-                taken.push(l);
-                Some(l)
-            } else {
-                None
-            };
+            if obs.attached && obs.holding as usize == k {
+                self.robots[i].slot = Some(local(obs.pos));
+            }
+            if let Some(slot) = self.robots[i].slot {
+                taken.push(slot);
+            }
         }
 
         if taken.is_empty() {
