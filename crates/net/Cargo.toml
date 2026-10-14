@@ -1,0 +1,10 @@
+[package]
+name = "antlift-net"
+description = "Simulated robot<->edge network link with latency, loss and byte accounting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rand.workspace = true
+rand_chacha.workspace = true
