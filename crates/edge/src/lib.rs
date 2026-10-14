@@ -1207,7 +1207,20 @@ impl EdgeServer {
             .as_ref()
             .is_some_and(|p| !p.waypoints.is_empty());
         self.stats.plans += 1;
-        if self.cfg.ghosts && has_route && !self.teams[k].delivered {
+        // Futures only mean something once the team has hold of its payload:
+        // simulated from before that, nothing moves and every one "jams".
+        let gripping = s
+            .robots
+            .iter()
+            .filter(|r| r.attached && r.holding as usize == k)
+            .count();
+        let team_size = self
+            .robots
+            .iter()
+            .filter(|r| r.active && r.team == k)
+            .count();
+        let holding = 2 * gripping >= team_size.max(1);
+        if self.cfg.ghosts && has_route && holding && !self.teams[k].delivered {
             return self.learn_from_ghosts(k, &s);
         }
         None
@@ -1561,7 +1574,7 @@ mod tests {
 
     #[test]
     fn every_robot_gets_a_tree_within_budget() {
-        let layout = Layout::doorway();
+        let layout = Layout::hall();
         let cfg = EdgeConfig::default();
         let mut edge = EdgeServer::new(layout.clone(), cfg);
         edge.handle(Uplink::Camera(snapshot(&layout)));
@@ -1598,7 +1611,7 @@ mod tests {
 
     #[test]
     fn surprise_triggers_a_rate_limited_replan_and_raises_jam_prior() {
-        let layout = Layout::doorway();
+        let layout = Layout::hall();
         let mut edge = EdgeServer::new(layout.clone(), no_ghosts());
         edge.handle(Uplink::Camera(snapshot(&layout)));
         edge.tick(0.0);

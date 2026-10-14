@@ -166,7 +166,7 @@ pub struct SessionConfig {
 impl SessionConfig {
     pub fn new(control: ControlMode) -> Self {
         Self {
-            layout: Layout::doorway(),
+            layout: Layout::hall(),
             control,
             link: LinkConfig::default(),
             edge: EdgeConfig::default(),

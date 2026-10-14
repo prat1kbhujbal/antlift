@@ -24,7 +24,7 @@ const HELP: &[&str] = &[
     "E edge on/off · [ ] latency · L packet loss",
     "C switch mode live · V side-by-side compare",
     "T ghost futures · P packets · H heat map · K risks",
-    "W doorway/warehouse level · F fast-forward",
+    "W hall/warehouse level · F fast-forward",
     "Space pause · R reset · Esc deselect",
 ];
 
@@ -226,8 +226,8 @@ fn handle_input(app: &mut App, views: &[View]) {
     }
     if is_key_pressed(KeyCode::W) {
         app.level = match app.level {
-            Level::Doorway => Level::Warehouse,
-            Level::Warehouse => Level::Doorway,
+            Level::Hall => Level::Warehouse,
+            Level::Warehouse => Level::Hall,
         };
         app.selected = None;
         app.reset();
@@ -262,7 +262,7 @@ async fn main() {
     let level = if args.iter().any(|a| a == "--warehouse") {
         Level::Warehouse
     } else {
-        Level::Doorway
+        Level::Hall
     };
     let mut app = App::new(level);
     if args.iter().any(|a| a == "--compare") {

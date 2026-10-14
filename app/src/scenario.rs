@@ -44,31 +44,31 @@ pub fn conditions() -> Vec<Condition> {
     vec![
         Condition {
             name: "clean".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: clean,
             disruptions: vec![],
         },
         Condition {
             name: "slow".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: slow,
             disruptions: vec![],
         },
         Condition {
             name: "lossy".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: lossy,
             disruptions: vec![],
         },
         Condition {
             name: "slow+lossy".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: harsh,
             disruptions: vec![],
         },
         Condition {
             name: "disrupted".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: clean,
             disruptions: vec![
                 Disruption::Kick {
@@ -77,7 +77,7 @@ pub fn conditions() -> Vec<Condition> {
                 },
                 Disruption::Crate {
                     at: 20.0,
-                    pos: V2::new(23.0, 12.0),
+                    pos: V2::new(22.0, 17.0),
                 },
                 Disruption::Shake { at: 30.0 },
                 Disruption::Kick {
@@ -88,7 +88,7 @@ pub fn conditions() -> Vec<Condition> {
         },
         Condition {
             name: "outage 20-30s".into(),
-            level: Level::Doorway,
+            level: Level::Hall,
             link: clean,
             disruptions: vec![Disruption::Outage {
                 at: 20.0,
@@ -105,7 +105,7 @@ pub fn latency_sweep() -> Vec<(f32, Condition)> {
         .map(|lat| {
             let c = Condition {
                 name: format!("latency {:.0} ms", lat * 1000.0),
-                level: Level::Doorway,
+                level: Level::Hall,
                 link: LinkConfig {
                     latency: lat,
                     jitter: lat * 0.2,
@@ -125,7 +125,7 @@ pub fn outage_sweep() -> Vec<(f32, Condition)> {
         .map(|secs| {
             let c = Condition {
                 name: format!("outage {secs:.0} s"),
-                level: Level::Doorway,
+                level: Level::Hall,
                 link: LinkConfig::default(),
                 disruptions: vec![Disruption::Outage { at: 20.0, secs }],
             };
@@ -136,7 +136,7 @@ pub fn outage_sweep() -> Vec<(f32, Condition)> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
-    Doorway,
+    Hall,
     Warehouse,
 }
 
@@ -144,7 +144,7 @@ impl Level {
     /// The level exactly as authored.
     pub fn base(self) -> Layout {
         match self {
-            Level::Doorway => Layout::doorway(),
+            Level::Hall => Layout::hall(),
             Level::Warehouse => Layout::warehouse(),
         }
     }
@@ -152,7 +152,7 @@ impl Level {
     /// The level with its payloads' start poses jittered by `seed`.
     pub fn layout(self, seed: u64) -> Layout {
         let (mut l, jitter, turn) = match self {
-            Level::Doorway => (Layout::doorway(), 1.0, 0.4),
+            Level::Hall => (Layout::hall(), 1.0, 0.4),
             Level::Warehouse => (Layout::warehouse(), 0.5, 0.2),
         };
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
@@ -169,15 +169,15 @@ impl Level {
     /// Time limit for a run (s).
     pub fn limit(self) -> f32 {
         match self {
-            Level::Doorway => 240.0,
+            Level::Hall => 240.0,
             Level::Warehouse => 420.0,
         }
     }
 }
 
-/// The doorway level with the payload's start pose jittered by `seed`.
+/// The assembly hall with the payload's start pose jittered by `seed`.
 pub fn layout_for(seed: u64) -> Layout {
-    Level::Doorway.layout(seed)
+    Level::Hall.layout(seed)
 }
 
 /// The three-team warehouse, under clean, lossy, slow, attrition and outage.

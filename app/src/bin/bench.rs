@@ -3,7 +3,7 @@
 //!
 //!     cargo run --release --bin bench -- [--seeds 10] [--limit <s>] [--out results]
 //!
-//! Writes `<out>/bench.csv` and `<out>/summary.md` (doorway condition
+//! Writes `<out>/bench.csv` and `<out>/summary.md` (assembly hall condition
 //! matrix), `<out>/sweeps.csv` (latency and outage sweeps) and
 //! `<out>/warehouse.csv` (three teams sharing the warehouse).
 

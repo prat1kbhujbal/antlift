@@ -121,7 +121,7 @@ impl Grid {
     /// turning gradually along each one instead of stopping to rotate. A
     /// shortcut keeps as much slack as the stretch it replaces had (capped at
     /// [`SMOOTH_MARGIN`]), and stretches tighter than [`SMOOTH_TIGHT`]
-    /// (doorways, a wedged start) are never shortcut: there the search's own
+    /// (doorways, channels, a wedged start) are never shortcut: there the search's own
     /// centred, aligned cell-by-cell path is kept. The result is resampled
     /// every [`SMOOTH_STEP`] metres.
     pub fn smooth(&self, poses: &[Pose], fp: &Footprint) -> Vec<Pose> {
@@ -391,9 +391,10 @@ impl Ord for Open {
 mod tests {
     use super::*;
     use antlift_core::{axis_error, Layout, SLOT_OFFSET};
+    use std::f32::consts::FRAC_PI_2;
 
     fn setup() -> (Layout, Grid, Footprint) {
-        let l = Layout::doorway();
+        let l = Layout::hall();
         let g = Grid::new(l.arena, &l.walls);
         let fp = Footprint::new(l.payloads[0].half + V2::new(SLOT_OFFSET, SLOT_OFFSET));
         (l, g, fp)
@@ -415,22 +416,32 @@ mod tests {
     }
 
     #[test]
-    fn plans_through_doorway_aligned() {
+    fn plans_the_s_route_upright_through_the_channel() {
         let (l, g, fp) = setup();
         let start = Pose {
             pos: l.payloads[0].start,
             heading: l.payloads[0].angle,
         };
         let path = g.plan(start, l.payloads[0].goal, &fp).expect("path exists");
-        let crossing = path
+        // The only way north is the 4 m channel between the two machines
+        // (x 14..18), and the sofa has to be upright in it.
+        let channel: Vec<&Pose> = path
+            .iter()
+            .filter(|p| (9.0..12.0).contains(&p.pos.y) && (14.0..18.0).contains(&p.pos.x))
+            .collect();
+        assert!(!channel.is_empty(), "route goes up the channel");
+        for p in channel {
+            assert!(
+                axis_error(FRAC_PI_2, p.heading).abs() < 0.3,
+                "upright in the channel: {p:?}"
+            );
+        }
+        // It enters the dock through its 5.5 m mouth.
+        let entry = path
             .windows(2)
-            .find(|w| w[0].pos.x < 20.0 && w[1].pos.x >= 20.0)
-            .expect("crosses wall")[1];
-        assert!((10.5..13.5).contains(&crossing.pos.y), "{crossing:?}");
-        assert!(
-            axis_error(0.0, crossing.heading).abs() < 0.3,
-            "should be roughly aligned with the door: {crossing:?}"
-        );
+            .find(|w| w[0].pos.x < 31.6 && w[1].pos.x >= 31.6)
+            .expect("enters the dock")[1];
+        assert!((3.5..9.0).contains(&entry.pos.y), "{entry:?}");
         for p in &path[1..] {
             assert!(g.slack(*p, &fp) >= 0.0);
         }
@@ -472,10 +483,10 @@ mod tests {
     }
 
     #[test]
-    fn no_plan_when_door_is_sealed() {
+    fn no_plan_when_the_channel_is_sealed() {
         let (mut l, _, fp) = setup();
         l.walls
-            .push(Aabb::new(V2::new(19.0, 10.0), V2::new(21.0, 14.0)));
+            .push(Aabb::new(V2::new(13.0, 9.0), V2::new(19.0, 11.0)));
         let g = Grid::new(l.arena, &l.walls);
         let start = Pose {
             pos: l.payloads[0].start,
@@ -492,13 +503,15 @@ mod escape_tests {
 
     #[test]
     fn plans_out_of_a_wedged_start() {
-        let l = Layout::doorway();
+        let l = Layout::hall();
         let g = Grid::new(l.arena, &l.walls);
         let fp = Footprint::new(l.payloads[0].half + V2::new(SLOT_OFFSET, SLOT_OFFSET) * 2.0);
-        // Diagonal against the doorway's lower wall, like a reflex shove leaves it.
+        // Tilted in the channel and jammed against both machines, like a
+        // reflex shove can leave it. (Escape needs some move to increase
+        // clearance, so a payload buried deep in both walls can't escape.)
         let start = Pose {
-            pos: V2::new(17.45, 12.33),
-            heading: 0.54,
+            pos: V2::new(16.0, 10.5),
+            heading: 1.15,
         };
         assert!(g.slack(start, &fp) < 0.0, "test needs a colliding start");
         assert!(g.plan(start, l.payloads[0].goal, &fp).is_some());

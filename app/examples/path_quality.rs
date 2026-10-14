@@ -5,7 +5,7 @@ use antlift_app::{EdgeRuntime, Session, SessionConfig};
 use antlift_core::{axis_error, ControlMode};
 
 fn main() {
-    for level in [Level::Doorway, Level::Warehouse] {
+    for level in [Level::Hall, Level::Warehouse] {
         let mut s = Session::new(SessionConfig {
             layout: level.base(),
             ..SessionConfig::new(ControlMode::Speculative)

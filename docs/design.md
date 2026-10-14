@@ -92,12 +92,15 @@ A level is a list of payloads, each with a goal and a team of robots, plus autho
 ## 4. Evaluation
 
 ### 4.1 Method
+
+**Levels.** The single-team level is an **assembly hall**: a 4 m sofa weaves an S-shaped route under a press line, north up a 4 m channel between two machines (upright), across an aisle with parts racks, south down the dock corridor and into a loading-dock bay through a 5.5 m mouth. It replaced an earlier level (two rooms joined by a narrow doorway) that was too close to the classic ant load-carrying experiment. The multi-team level is the warehouse (section 4.6). Ghost futures are only simulated once at least half a team grips its payload: before that every future "jams" because nothing moves.
+
 - **Two control modes, same brain.** In *speculative* mode each robot runs its brain on its own sensing and an edge-issued tree. In *centralized* mode the edge runs **the identical brain code** for every robot, using streamed robot state (20 Hz) and a 20 Hz camera feed (dead-reckoned forward to cover camera latency), and streams commands back at 20 Hz. To give the baseline a fair shot:
   - while a robot is approaching the payload, the edge sends **velocity setpoints** and the robot closes its velocity loop locally at 60 Hz;
   - robots report their exact grip point;
   - commands are held until the next one arrives, and a 0.3 s watchdog stops a robot if commands stop coming.
   So the only difference between the modes is *where decisions are made*.
-- **Conditions:** clean (40 ms), slow (150 ± 50 ms), lossy (20% loss), slow+lossy, disrupted (two kicks, a crate dropped in the doorway, front robots shaken loose), and a 10 s edge outage.
+- **Conditions:** clean (40 ms), slow (150 ± 50 ms), lossy (20% loss), slow+lossy, disrupted (two kicks, a crate dropped in the upper aisle, front robots shaken loose), and a 10 s edge outage.
 - **Sweeps:** one-way latency from 0 to 1000 ms (10% loss), and edge outage length from 0 to 40 s.
 - **Seeds:** 10 per cell. Each seed randomizes the payload's start pose (±1 m, ±0.4 rad) and the radio's random generator. 720 runs take about 4 minutes on 20 cores (ghost futures with 44 robots dominate).
 - **Metrics:** success within 240 s, time to goal (mean ± 95% CI over successes), and robot radio bytes per robot per second in both directions (the camera feed is infrastructure and isn't counted).
@@ -110,12 +113,12 @@ Three variants: **speculative** (ghost futures), **speculative-heuristic** (the 
 
 | Condition | Speculative | Speculative, heuristic | Centralized |
 |---|---|---|---|
-| clean | 10/10 · 66.6 ± 8.0 · 47 | 10/10 · 60.4 ± 2.7 · 51 | 10/10 · 57.4 ± 1.3 · 439 |
-| slow (150 ms) | 10/10 · 64.2 ± 7.1 · 46 | 10/10 · 61.0 ± 2.8 · 51 | 10/10 · 61.8 ± 2.4 · 440 |
-| lossy (20%) | 10/10 · 63.7 ± 4.1 · 64 | 10/10 · 61.4 ± 2.9 · 69 | 10/10 · 60.4 ± 3.0 · 439 |
-| slow + lossy | 10/10 · 67.9 ± 5.8 · 62 | 10/10 · 65.9 ± 6.4 · 66 | 10/10 · 63.8 ± 1.7 · 440 |
-| disrupted | 10/10 · 76.6 ± 3.0 · 48 | 10/10 · 78.3 ± 2.4 · 50 | 10/10 · 75.2 ± 1.4 · 444 |
-| 10 s edge outage | 10/10 · 61.7 ± 2.1 · 46 | 10/10 · 62.0 ± 2.0 · 48 | 10/10 · 67.3 ± 1.3 · 420 |
+| clean | 10/10 · 82.8 ± 10.4 · 47 | 10/10 · 83.0 ± 10.4 · 48 | 10/10 · 74.3 ± 3.2 · 447 |
+| slow (150 ms) | 10/10 · 78.3 ± 3.0 · 47 | 10/10 · 78.5 ± 2.9 · 48 | 10/10 · 74.8 ± 3.3 · 446 |
+| lossy (20%) | 10/10 · 75.1 ± 2.1 · 67 | 10/10 · 75.2 ± 2.0 · 68 | 10/10 · 71.9 ± 2.5 · 447 |
+| slow + lossy | 10/10 · 81.0 ± 4.3 · 64 | 10/10 · 81.5 ± 4.2 · 66 | 10/10 · 78.5 ± 3.8 · 447 |
+| disrupted | 10/10 · 85.9 ± 7.4 · 46 | 10/10 · 87.3 ± 8.5 · 47 | 10/10 · 78.1 ± 2.4 · 448 |
+| 10 s edge outage | 10/10 · 84.1 ± 6.5 · 45 | 10/10 · 83.6 ± 7.1 · 46 | 10/10 · 84.8 ± 4.2 · 432 |
 
 Full tables, including both sweeps for all three variants, are in `results/summary.md`.
 
@@ -124,14 +127,14 @@ Full tables, including both sweeps for all three variants, are in `results/summa
 ![Outage sweep](img/outage.png)
 
 ### 4.3 What the data supports
-1. **6-9× less radio traffic for the same task.** Speculative uses 45-70 B/robot/s against about 440 for centralized, with time to goal within a few seconds on clean, slow and lossy links. Every speculative cell succeeds 10/10.
-2. **Latency tolerance is the decisive difference.** Speculative time to goal stays within 60-66 s from 0 to 1000 ms of one-way latency (10/10 at every point). Centralized slows from 200 ms (72 s), takes about 2.5× as long at 500 ms (150 s), and succeeds in only 5/10 runs at 750 ms and 0/10 at 1000 ms.
-3. **Outages:** every variant recovers in every run, up to 40 s offline. Speculative is a few seconds faster, because robots keep working on their cached leases while centralized robots stop on the watchdog.
-4. **Ghost futures don't help.** On the doorway they are within noise of heuristic priors. In the warehouse (section 4.6) they are clearly slower. Simulating futures also costs compute: about 25 ms per plan per team, and most of the benchmark's CPU.
-5. **Centralized is slightly better when disrupted** (75.2 vs 76.6 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
+1. **7-10× less radio traffic for the same task.** Speculative uses 45-68 B/robot/s against about 440 for centralized. Every variant succeeds 10/10 in every condition. On a good link centralized is a few seconds faster (for example 74.3 vs 82.8 s clean), because it reacts to everything at 20 Hz with the full picture.
+2. **Latency tolerance is the decisive difference.** Speculative time to goal stays within 76-87 s from 0 to 1000 ms of one-way latency (10/10 at every point). Centralized slows from 200 ms (84 s), takes 136 s at 300 ms, and succeeds in only 5/10 runs at 500 ms, 2/10 at 750 ms and 0/10 at 1000 ms. The hall's three turns make remote control break down sooner than the old single doorway did.
+3. **Outages:** every variant recovers in every run, up to 40 s offline, within about 3 s of each other.
+4. **Ghost futures don't help.** On the hall they are within noise of heuristic priors. In the warehouse (section 4.6) they are slower. Simulating futures also costs compute: about 25 ms per plan per team, and most of the benchmark's CPU.
+5. **Centralized is also faster when disrupted** (78.1 vs 85.9 s) and has lower variance on a clean link. With 20 Hz state it reacts to kicks with full information, while speculative robots only react to the contingencies they were given.
 
 ### 4.4 What the data does *not* support (yet)
-- Two levels: one doorway with one payload, and one warehouse with three. Larger swarms and other layouts are untested.
+- Two levels: the assembly hall with one payload, and the warehouse with three. Larger swarms and other layouts are untested.
 - Ghost futures are 7 hand-chosen disruptions, simulated with perfect knowledge of the snapshot. Real perception noise and model mismatch between the edge's simulator and the world aren't modelled, because the "real" world here is the same simulator.
 - The radio model is Bernoulli loss with uniform jitter: no bursty loss, no bandwidth cap, no contention.
 - The 1 s latency case is extreme for a local edge. It stands in for cellular or long-haul links rather than Wi-Fi.
@@ -167,27 +170,26 @@ Same three variants, 10 seeds per condition (start poses jittered ±0.5 m, ±0.2
 
 | Condition | Speculative | Speculative, heuristic | Centralized |
 |---|---|---|---|
-| clean | 10/10 · 139.2 ± 14.7 · 47 | 10/10 · 128.3 ± 15.6 · 48 | 10/10 · 131.5 ± 13.4 · 449 |
-| slow (150 ms) | 10/10 · 153.4 ± 26.2 · 47 | 10/10 · 116.6 ± 9.6 · 50 | 9/10 · 166.8 ± 15.3 · 445 |
-| lossy (20%) | 10/10 · 163.0 ± 55.9 · 63 | 10/10 · 111.9 ± 5.0 · 71 | 10/10 · 142.2 ± 19.0 · 448 |
-| attrition (1 in 4 robots die at 40 s) | 9/10 · 166.2 ± 33.9 · 40 | 10/10 · 124.3 ± 10.3 · 42 | 10/10 · 132.7 ± 7.2 · 368 |
-| 15 s edge outage at 40 s | 10/10 · 147.3 ± 25.9 · 44 | 10/10 · 120.4 ± 9.3 · 46 | 10/10 · 139.0 ± 7.5 · 434 |
+| clean | 10/10 · 122.0 ± 8.5 · 47 | 10/10 · 116.3 ± 8.2 · 50 | 9/10 · 119.0 ± 11.8 · 448 |
+| slow (150 ms) | 10/10 · 126.7 ± 9.8 · 47 | 10/10 · 114.5 ± 7.0 · 51 | 10/10 · 165.6 ± 20.4 · 445 |
+| lossy (20%) | 10/10 · 128.3 ± 14.2 · 65 | 10/10 · 110.9 ± 4.4 · 71 | 10/10 · 150.0 ± 54.9 · 449 |
+| attrition (1 in 4 robots die at 40 s) | 10/10 · 135.0 ± 15.5 · 40 | 10/10 · 128.5 ± 10.2 · 42 | 10/10 · 140.3 ± 22.3 · 366 |
+| 15 s edge outage at 40 s | 10/10 · 134.2 ± 11.9 · 43 | 10/10 · 122.4 ± 11.8 · 46 | 10/10 · 140.8 ± 18.0 · 432 |
 
 ![Warehouse](img/warehouse.png)
 
 What it shows:
-1. **Coordination works in every variant.** Teams queue for doors (12-31 waits per run, mostly short re-checks), nobody deadlocks, and delivered teams lend 9-12 robots.
-2. **Speculative with heuristic priors is the best performer here:** 50/50 runs, the fastest times in every condition (112-128 s), almost no surprises (0-5 per run), and about 8× less radio than centralized (42-71 vs 368-449 B/robot/s).
-3. **Centralized (49/50) and ghost futures (49/50) are both slower:** 131-167 s and 139-166 s, each with one failed run. Centralized now sees 14-48 surprises per run in four of five conditions (none under attrition).
-4. **Ghost futures are clearly worse than heuristic priors here** (for example 163 vs 112 s on the lossy link, 166 vs 124 s under attrition). Replanning around predicted jams sends payloads on longer routes, and that costs more than it saves.
+1. **Coordination works in every variant.** Teams queue for doors, nobody deadlocks, and delivered teams lend robots only where a grip spot is free.
+2. **Speculative with heuristic priors is the best performer here:** 50/50 runs, the fastest times in every condition (111-129 s), almost no surprises (0-5 per run), and about 8× less radio than centralized (42-71 vs 366-449 B/robot/s).
+3. **Ghost futures (50/50) are slower than heuristic priors** (122-135 s, for example 128 vs 111 s on the lossy link). **Centralized (49/50) is slowest under bad links** (166 s slow, 150 s lossy) and has one failed run.
 
-These numbers are after the multi-team routing fixes in section 4.8. Before them, centralized was the most reliable (50/50) and speculative failed 2-3 runs in 50, mostly by wedging in the dispatch doorway.
+These numbers are after the multi-team routing and lending fixes in section 4.8. Before them, centralized was the most reliable (50/50) and speculative failed 2-3 runs in 50, mostly by wedging in the dispatch doorway.
 
 ### 4.7 Route smoothing: an A/B test that said no
 
 (Measured before the routing fixes in section 4.8.)
 
-The grid planner's routes zigzag: on the doorway level, 18 direction changes and 4 stops to turn in place for a 31.8 m route. `Grid::smooth` shortcuts them in open space and turns while moving. It never shortcuts stretches with under 0.3 m of slack, and never gives up clearance the grid path had (up to 0.5 m). It cuts that route to 3 direction changes and no turn stops, and the warehouse routes from 25-39 direction changes to 9-15.
+The grid planner's routes zigzag: on the original doorway level (since replaced by the assembly hall), 18 direction changes and 4 stops to turn in place for a 31.8 m route. `Grid::smooth` shortcuts them in open space and turns while moving. It never shortcuts stretches with under 0.3 m of slack, and never gives up clearance the grid path had (up to 0.5 m). It cuts that route to 3 direction changes and no turn stops, and the warehouse routes from 25-39 direction changes to 9-15.
 
 It does not help delivery. Warehouse, 5 conditions × 30 seeds per variant (`cargo run --release --example ab_smooth -- 30`):
 
@@ -209,6 +211,7 @@ In the warehouse demo the pallet visibly reversed: it headed for one door, turne
 | ...and between the two staging doors | A replan every 2-4 s whenever another payload moved 3 m, each one choosing afresh | That trigger is removed. Replans that aren't caused by trouble prefer cells within 1.5 m of the current route (off-route costs 4×) |
 | Pallet took the long way round | Doors were claimed up to 20 m ahead, so the sofa held door D1 for about 50 s before using it | Doors are claimed only within 10 m. Until then a plan stops a body length short and is extended on approach |
 | All teams pushed crooked and slow (0.1-0.15 m/s) | Robots took the grip point nearest to themselves, so a team bunched on the side it was parked on | Spread evenly round the payload when nobody grips yet; gap-filling only for robots joining a gripping team |
+| Lent robots on reflexes, holding their old payload | A robot lent to a team with no free grip spot never got a tree | Lend only into a real free spot, reserved at once; otherwise stay with the delivered team |
 | One centralized run took 5 minutes of CPU | The "extend a short plan" check fired for any nearby door, including one being passed, so it replanned every camera frame | Extend only when the door it stopped short of is in reach, at most every 2 s |
 
 Known leftover: after delivery a few robots still walking to re-grip can nudge a payload up to about 2 m off its goal while the team holds it. Delivery is counted when the payload first arrives, so this doesn't affect results, but the demo shows it.
@@ -218,7 +221,7 @@ Known leftover: after delivery a few robots still walking to re-grip can nudge a
 **M2: make the claim measurable (done).** Centralized baseline, seed sweeps with CIs, latency and outage sweeps, plots.
 
 **M3: real speculation (in progress)**
-- Done: **ghost futures**, physics rollouts on the edge that set contingency probabilities. Measured: no outcome change on the doorway level (section 4.3).
+- Done: **ghost futures**, physics rollouts on the edge that set contingency probabilities. Measured: no reliable outcome change on either level (section 4.3).
 - Next: harder layouts where heuristics are wrong; sim-to-real gap (perturb the edge's simulator parameters relative to the world's); calibration metrics (Brier score of predicted vs observed jams).
 - Persist learned priors across runs (heat map, grip-loss stats).
 - Smarter fallback once a lease has expired (follow the cached path cautiously rather than pure reflexes).

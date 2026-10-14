@@ -1,14 +1,14 @@
 condition,control,seed,reached,time_s,delivered,final_dist_m,hits,misses,plans,zone_waits,reassigned,bytes_per_robot_s
-warehouse,speculative,1,true,197.95,3,2.96,227,0,128,21,2,46.0
-warehouse,speculative,2,true,171.67,3,2.05,475,41,111,23,3,50.1
-warehouse,speculative,3,true,114.14,3,4.01,191,0,66,25,5,44.9
-warehouse,speculative,4,true,111.79,3,2.03,90,0,71,23,4,47.6
-warehouse,speculative,5,true,178.38,3,5.10,359,43,70,18,5,45.4
-warehouse,speculative,6,true,126.91,3,2.40,198,0,73,3,3,49.1
-warehouse,speculative,7,true,175.65,3,3.97,248,0,96,3,4,48.4
-warehouse,speculative,8,true,106.96,3,3.93,146,0,67,18,6,46.7
-warehouse,speculative,9,true,127.28,3,2.05,114,1,82,1,3,50.7
-warehouse,speculative,10,true,169.85,3,2.12,217,0,144,28,4,49.8
+warehouse,speculative,1,true,122.88,3,2.50,194,0,72,27,5,43.9
+warehouse,speculative,2,true,133.41,3,4.31,402,26,82,36,5,46.8
+warehouse,speculative,3,true,152.06,3,2.09,473,55,83,39,3,43.1
+warehouse,speculative,4,true,106.56,3,2.39,168,0,83,30,5,52.3
+warehouse,speculative,5,true,119.96,3,2.51,132,0,69,35,4,47.7
+warehouse,speculative,6,true,125.63,3,2.30,166,0,66,10,3,48.2
+warehouse,speculative,7,true,103.37,3,2.03,222,0,82,36,4,49.7
+warehouse,speculative,8,true,121.63,3,2.39,165,0,59,6,3,47.7
+warehouse,speculative,9,true,114.26,3,3.50,251,1,73,29,5,48.0
+warehouse,speculative,10,true,120.09,3,3.26,197,0,74,33,6,46.9
 warehouse,speculative-heuristic,1,true,106.39,3,2.03,125,0,51,18,5,50.8
 warehouse,speculative-heuristic,2,true,103.96,3,2.55,135,0,52,19,3,52.4
 warehouse,speculative-heuristic,3,true,149.34,3,2.08,638,52,49,18,3,47.8
@@ -19,26 +19,26 @@ warehouse,speculative-heuristic,7,true,117.16,3,2.10,150,0,58,18,4,51.2
 warehouse,speculative-heuristic,8,true,119.08,3,2.06,185,0,47,14,4,49.9
 warehouse,speculative-heuristic,9,true,110.63,3,2.04,125,0,54,20,4,51.0
 warehouse,speculative-heuristic,10,true,107.64,3,4.05,191,0,46,17,6,51.1
-warehouse,centralized,1,true,139.66,3,1.32,210,0,129,21,0,449.5
-warehouse,centralized,2,true,131.01,3,1.30,112,0,136,21,0,451.5
-warehouse,centralized,3,true,146.76,3,1.34,220,0,109,14,0,447.9
-warehouse,centralized,4,true,111.71,3,3.02,117,0,116,16,4,449.2
-warehouse,centralized,5,true,105.26,3,2.22,208,0,121,19,3,449.2
-warehouse,centralized,6,true,123.53,3,1.35,164,0,125,7,0,451.7
-warehouse,centralized,7,true,162.95,3,1.31,192,0,193,0,0,446.3
-warehouse,centralized,8,true,146.57,3,3.36,267,36,134,23,4,447.4
-warehouse,centralized,9,true,123.50,3,2.27,185,0,129,2,0,451.3
-warehouse,centralized,10,true,131.25,3,2.61,237,0,113,24,0,449.8
-warehouse slow,speculative,1,true,212.58,3,3.03,311,0,160,4,7,46.1
-warehouse slow,speculative,2,true,129.30,3,1.94,186,0,69,7,5,46.1
-warehouse slow,speculative,3,true,129.80,3,2.00,189,0,75,32,4,44.9
-warehouse slow,speculative,4,true,111.88,3,2.04,132,0,62,20,5,45.5
-warehouse slow,speculative,5,true,148.99,3,3.49,306,0,114,28,4,53.3
-warehouse slow,speculative,6,true,120.89,3,3.95,305,1,83,29,6,46.0
-warehouse slow,speculative,7,true,124.90,3,2.50,160,16,85,14,5,48.9
-warehouse slow,speculative,8,true,139.64,3,2.92,226,1,84,27,4,49.4
-warehouse slow,speculative,9,true,191.86,3,2.07,247,0,160,18,7,47.7
-warehouse slow,speculative,10,true,107.01,3,2.02,187,0,70,26,4,47.8
+warehouse,centralized,1,true,104.56,3,2.36,293,0,98,10,4,448.3
+warehouse,centralized,2,false,,1,64.05,5790,930,241,38,0,445.2
+warehouse,centralized,3,true,112.53,3,3.57,238,0,130,42,4,448.8
+warehouse,centralized,4,true,101.91,3,2.98,215,0,106,14,4,448.1
+warehouse,centralized,5,true,151.14,3,1.33,234,0,122,6,0,447.7
+warehouse,centralized,6,true,144.63,3,1.97,213,0,120,26,0,447.3
+warehouse,centralized,7,true,113.08,3,1.59,260,0,142,47,0,449.2
+warehouse,centralized,8,true,124.26,3,1.42,222,0,137,38,0,451.6
+warehouse,centralized,9,true,117.74,3,1.69,246,0,124,14,0,448.4
+warehouse,centralized,10,true,100.91,3,2.61,194,0,104,17,4,448.4
+warehouse slow,speculative,1,true,111.09,3,2.89,214,15,82,19,7,51.0
+warehouse slow,speculative,2,true,131.90,3,2.50,296,10,78,33,4,44.1
+warehouse slow,speculative,3,true,144.79,3,2.02,277,41,79,21,3,44.5
+warehouse slow,speculative,4,true,138.79,3,2.01,223,10,85,30,6,47.3
+warehouse slow,speculative,5,true,151.89,3,2.11,128,0,57,13,5,41.0
+warehouse slow,speculative,6,true,104.01,3,2.03,163,0,67,30,4,48.3
+warehouse slow,speculative,7,true,109.24,3,2.48,118,0,55,19,3,45.2
+warehouse slow,speculative,8,true,127.75,3,3.86,165,0,66,25,5,50.4
+warehouse slow,speculative,9,true,128.46,3,3.48,187,0,70,5,4,49.0
+warehouse slow,speculative,10,true,118.91,3,1.83,203,0,81,30,5,48.4
 warehouse slow,speculative-heuristic,1,true,101.39,3,2.00,154,0,46,15,5,49.9
 warehouse slow,speculative-heuristic,2,true,106.56,3,2.01,158,0,50,18,4,50.9
 warehouse slow,speculative-heuristic,3,true,110.23,3,2.06,156,0,46,17,3,50.8
@@ -49,26 +49,26 @@ warehouse slow,speculative-heuristic,7,true,107.09,3,2.39,116,0,63,28,3,55.2
 warehouse slow,speculative-heuristic,8,true,127.08,3,5.33,150,0,61,21,5,51.4
 warehouse slow,speculative-heuristic,9,true,127.71,3,2.06,189,1,49,11,4,48.5
 warehouse slow,speculative-heuristic,10,true,119.43,3,2.14,149,0,51,20,5,47.8
-warehouse slow,centralized,1,true,179.97,3,2.00,488,0,292,6,4,441.4
-warehouse slow,centralized,2,true,151.92,3,1.46,401,0,354,33,2,446.8
-warehouse slow,centralized,3,true,144.44,3,1.39,342,0,629,14,2,447.0
-warehouse slow,centralized,4,true,163.90,3,1.32,309,0,242,11,1,445.4
-warehouse slow,centralized,5,true,212.13,3,1.68,263,0,884,4,0,441.2
-warehouse slow,centralized,6,true,219.39,3,2.05,378,0,334,64,0,440.6
-warehouse slow,centralized,7,true,173.39,3,1.38,444,0,344,28,3,441.8
-warehouse slow,centralized,8,true,132.38,3,1.76,328,0,146,2,4,448.7
-warehouse slow,centralized,9,true,159.34,3,1.35,336,0,709,8,3,444.0
-warehouse slow,centralized,10,true,209.09,3,2.06,284,0,366,23,4,439.5
-warehouse lossy,speculative,1,true,201.39,3,2.58,284,1,161,46,3,66.1
-warehouse lossy,speculative,2,true,133.93,3,2.45,169,10,89,24,3,67.2
-warehouse lossy,speculative,3,true,114.49,3,4.81,127,0,70,24,6,63.9
-warehouse lossy,speculative,4,true,125.50,3,3.41,102,0,61,18,5,55.5
-warehouse lossy,speculative,5,true,294.42,3,1.73,3549,451,206,23,11,72.0
-warehouse lossy,speculative,6,true,124.65,3,4.40,309,15,79,20,5,64.0
-warehouse lossy,speculative,7,true,136.11,3,3.08,215,0,61,10,4,60.8
-warehouse lossy,speculative,8,true,122.38,3,2.07,112,0,67,14,6,57.3
-warehouse lossy,speculative,9,true,157.51,3,2.35,209,0,118,19,3,63.8
-warehouse lossy,speculative,10,true,111.79,3,4.12,211,10,71,18,4,63.9
+warehouse slow,centralized,1,true,218.89,3,2.51,244,0,1153,18,2,438.3
+warehouse slow,centralized,2,true,137.06,3,1.60,332,0,229,21,4,449.5
+warehouse slow,centralized,3,true,135.69,3,2.25,341,0,433,26,5,447.2
+warehouse slow,centralized,4,true,135.88,3,1.81,373,0,391,19,3,449.0
+warehouse slow,centralized,5,true,211.33,3,1.73,292,0,1097,20,2,440.6
+warehouse slow,centralized,6,true,203.29,3,1.71,228,0,1036,18,2,440.6
+warehouse slow,centralized,7,true,143.63,3,2.29,334,0,336,14,2,446.2
+warehouse slow,centralized,8,true,161.80,3,2.95,385,0,379,12,4,443.8
+warehouse slow,centralized,9,true,156.04,3,1.44,371,0,1124,10,2,445.2
+warehouse slow,centralized,10,true,152.24,3,1.41,383,0,604,12,2,446.5
+warehouse lossy,speculative,1,true,127.36,3,2.16,185,0,77,26,4,62.5
+warehouse lossy,speculative,2,true,107.91,3,2.02,213,0,82,39,4,64.4
+warehouse lossy,speculative,3,true,134.58,3,2.72,147,16,84,43,3,60.2
+warehouse lossy,speculative,4,true,110.84,3,4.13,157,0,79,17,7,68.4
+warehouse lossy,speculative,5,true,106.29,3,4.27,195,0,85,34,5,68.9
+warehouse lossy,speculative,6,true,145.61,3,2.04,191,0,95,6,4,67.4
+warehouse lossy,speculative,7,true,104.77,3,2.02,174,0,82,35,4,67.5
+warehouse lossy,speculative,8,true,125.35,3,4.28,153,16,75,26,6,65.0
+warehouse lossy,speculative,9,true,176.60,3,18.82,392,27,118,9,3,61.7
+warehouse lossy,speculative,10,true,144.18,3,3.23,374,26,92,42,6,61.2
 warehouse lossy,speculative-heuristic,1,true,108.79,3,2.00,67,0,69,35,4,73.3
 warehouse lossy,speculative-heuristic,2,true,125.45,3,2.03,199,0,72,35,4,68.5
 warehouse lossy,speculative-heuristic,3,true,115.69,3,2.73,80,0,60,29,3,69.3
@@ -79,26 +79,26 @@ warehouse lossy,speculative-heuristic,7,true,102.19,3,2.05,184,0,58,24,4,72.8
 warehouse lossy,speculative-heuristic,8,true,113.13,3,4.06,167,0,61,22,6,72.9
 warehouse lossy,speculative-heuristic,9,true,116.03,3,2.05,157,0,59,22,3,67.6
 warehouse lossy,speculative-heuristic,10,true,111.39,3,2.88,126,0,62,29,5,70.5
-warehouse lossy,centralized,1,true,156.76,3,1.38,258,0,130,8,0,446.5
-warehouse lossy,centralized,2,true,212.38,3,1.85,926,108,137,16,0,441.6
-warehouse lossy,centralized,3,true,114.71,3,3.62,227,16,84,34,3,449.1
-warehouse lossy,centralized,4,true,102.92,3,1.70,169,0,105,42,0,449.2
-warehouse lossy,centralized,5,true,130.63,3,1.98,176,0,129,39,0,451.4
-warehouse lossy,centralized,6,true,151.61,3,1.46,228,0,152,25,0,446.5
-warehouse lossy,centralized,7,true,149.97,3,2.31,270,0,119,34,0,446.7
-warehouse lossy,centralized,8,true,123.65,3,1.85,198,0,77,25,1,451.3
-warehouse lossy,centralized,9,true,176.93,3,1.47,327,10,174,39,0,444.6
-warehouse lossy,centralized,10,true,155.77,3,1.66,200,0,127,17,0,447.3
-warehouse attrition,speculative,1,true,174.65,3,2.37,307,1,117,23,12,39.8
-warehouse attrition,speculative,2,false,,1,35.77,2370,320,184,74,7,29.8
-warehouse attrition,speculative,3,true,121.08,3,6.04,217,1,70,25,13,38.4
-warehouse attrition,speculative,4,true,108.43,3,1.90,134,0,78,33,7,42.3
-warehouse attrition,speculative,5,true,144.06,3,4.31,237,6,77,20,10,39.4
-warehouse attrition,speculative,6,true,136.28,3,2.62,165,0,78,3,9,41.9
-warehouse attrition,speculative,7,true,176.15,3,3.16,305,7,106,2,13,43.9
-warehouse attrition,speculative,8,true,117.91,3,3.61,164,0,85,16,15,41.5
-warehouse attrition,speculative,9,false,,1,33.97,5012,758,267,1,14,38.6
-warehouse attrition,speculative,10,true,173.27,3,4.19,143,0,146,31,12,43.2
+warehouse lossy,centralized,1,true,115.24,3,1.80,293,15,108,37,0,449.1
+warehouse lossy,centralized,2,true,129.10,3,2.16,412,18,104,26,0,452.2
+warehouse lossy,centralized,3,true,100.04,3,2.53,217,0,90,24,4,448.4
+warehouse lossy,centralized,4,true,101.46,3,1.52,224,0,89,17,0,449.2
+warehouse lossy,centralized,5,true,145.33,3,1.79,182,0,95,3,0,448.6
+warehouse lossy,centralized,6,true,148.42,3,1.79,206,0,103,41,0,448.4
+warehouse lossy,centralized,7,true,133.24,3,2.53,289,10,99,7,0,449.6
+warehouse lossy,centralized,8,true,101.47,3,1.34,178,0,143,47,1,449.6
+warehouse lossy,centralized,9,true,397.20,3,18.33,1971,293,245,43,0,446.1
+warehouse lossy,centralized,10,true,128.43,3,2.08,154,0,125,59,0,450.4
+warehouse attrition,speculative,1,true,123.45,3,2.33,222,0,74,32,7,39.0
+warehouse attrition,speculative,2,true,126.95,3,6.58,137,6,73,35,12,39.0
+warehouse attrition,speculative,3,true,137.13,3,2.43,199,0,66,32,9,35.9
+warehouse attrition,speculative,4,true,115.24,3,4.24,218,0,71,17,8,41.0
+warehouse attrition,speculative,5,true,150.07,3,3.33,136,0,81,36,8,41.3
+warehouse attrition,speculative,6,true,197.33,3,2.64,295,40,110,32,9,40.7
+warehouse attrition,speculative,7,true,108.93,3,1.62,206,0,87,42,8,43.1
+warehouse attrition,speculative,8,true,142.43,3,3.63,243,0,81,12,8,43.0
+warehouse attrition,speculative,9,true,124.21,3,6.00,217,1,80,32,13,40.1
+warehouse attrition,speculative,10,true,124.66,3,8.58,261,0,80,40,13,40.7
 warehouse attrition,speculative-heuristic,1,true,116.38,3,4.34,150,0,58,19,7,45.3
 warehouse attrition,speculative-heuristic,2,true,139.21,3,4.05,180,0,59,24,7,41.9
 warehouse attrition,speculative-heuristic,3,true,145.03,3,1.94,391,26,48,19,9,40.6
@@ -109,26 +109,26 @@ warehouse attrition,speculative-heuristic,7,true,110.24,3,1.96,145,0,47,15,8,42.
 warehouse attrition,speculative-heuristic,8,true,127.15,3,2.65,176,0,47,17,9,42.3
 warehouse attrition,speculative-heuristic,9,true,117.71,3,3.28,169,0,54,22,8,41.6
 warehouse attrition,speculative-heuristic,10,true,114.66,3,4.71,210,0,47,17,13,41.7
-warehouse attrition,centralized,1,true,136.11,3,2.36,148,0,107,22,7,366.8
-warehouse attrition,centralized,2,true,141.98,3,3.53,183,0,110,22,7,366.1
-warehouse attrition,centralized,3,true,135.23,3,2.96,230,0,86,15,7,367.6
-warehouse attrition,centralized,4,true,118.56,3,6.95,229,0,94,16,11,370.4
-warehouse attrition,centralized,5,true,116.13,3,2.22,207,0,95,20,11,371.9
-warehouse attrition,centralized,6,true,129.50,3,10.21,176,0,89,4,7,367.9
-warehouse attrition,centralized,7,true,184.70,3,18.27,448,32,167,0,10,354.2
-warehouse attrition,centralized,8,true,139.81,3,3.32,226,0,114,31,7,367.3
-warehouse attrition,centralized,9,true,149.06,3,2.34,170,0,119,2,8,360.7
-warehouse attrition,centralized,10,true,120.78,3,3.32,240,0,105,27,10,371.2
-warehouse outage,speculative,1,true,197.40,3,3.21,396,16,109,21,3,45.6
-warehouse outage,speculative,2,true,163.29,3,3.97,88,0,71,1,3,40.8
-warehouse outage,speculative,3,true,115.73,3,4.00,212,0,58,17,5,43.7
-warehouse outage,speculative,4,true,108.23,3,3.82,130,0,59,19,6,42.5
-warehouse outage,speculative,5,true,146.72,3,2.68,150,0,69,19,5,42.9
-warehouse outage,speculative,6,true,133.01,3,2.60,140,0,69,3,3,43.5
-warehouse outage,speculative,7,true,140.76,3,2.94,284,0,85,2,4,47.7
-warehouse outage,speculative,8,true,114.58,3,2.04,148,0,58,15,3,44.3
-warehouse outage,speculative,9,true,138.88,3,1.66,132,0,79,1,3,45.9
-warehouse outage,speculative,10,true,223.87,3,3.27,463,28,117,20,8,42.6
+warehouse attrition,centralized,1,true,113.09,3,5.15,312,0,90,9,11,372.6
+warehouse attrition,centralized,2,true,163.04,3,6.41,315,0,133,38,7,358.6
+warehouse attrition,centralized,3,true,115.21,3,3.88,233,0,96,25,9,372.1
+warehouse attrition,centralized,4,true,110.51,3,6.81,236,0,86,15,11,372.6
+warehouse attrition,centralized,5,true,186.15,3,3.25,228,0,103,6,7,351.3
+warehouse attrition,centralized,6,true,117.51,3,1.82,184,0,115,39,8,373.4
+warehouse attrition,centralized,7,true,119.04,3,3.43,326,0,99,31,8,372.1
+warehouse attrition,centralized,8,true,165.49,3,2.14,454,24,114,14,7,359.5
+warehouse attrition,centralized,9,true,204.59,3,2.84,431,0,177,10,10,349.0
+warehouse attrition,centralized,10,true,108.31,3,6.21,177,0,96,12,12,373.8
+warehouse outage,speculative,1,true,134.08,3,2.57,178,16,84,31,5,41.4
+warehouse outage,speculative,2,true,127.36,3,2.06,233,20,55,18,5,40.6
+warehouse outage,speculative,3,true,138.36,3,2.15,191,0,86,34,3,44.3
+warehouse outage,speculative,4,true,125.18,3,2.75,150,0,70,18,5,45.4
+warehouse outage,speculative,5,true,153.97,3,2.04,132,0,77,37,4,42.3
+warehouse outage,speculative,6,true,154.59,3,2.22,136,0,76,12,3,41.8
+warehouse outage,speculative,7,true,106.02,3,2.05,220,0,60,27,4,45.7
+warehouse outage,speculative,8,true,166.59,3,1.73,224,0,73,8,3,41.3
+warehouse outage,speculative,9,true,117.68,3,3.66,257,1,59,16,5,43.1
+warehouse outage,speculative,10,true,118.38,3,4.03,183,0,60,24,6,42.8
 warehouse outage,speculative-heuristic,1,true,108.59,3,2.03,133,0,47,17,5,46.4
 warehouse outage,speculative-heuristic,2,true,111.06,3,2.55,129,0,49,20,3,46.9
 warehouse outage,speculative-heuristic,3,true,116.98,3,2.02,114,0,51,21,3,46.9
@@ -139,13 +139,13 @@ warehouse outage,speculative-heuristic,7,true,105.41,3,4.02,155,0,42,12,6,45.3
 warehouse outage,speculative-heuristic,8,true,133.36,3,2.41,193,0,47,15,4,44.6
 warehouse outage,speculative-heuristic,9,true,109.24,3,2.05,137,0,47,15,4,46.8
 warehouse outage,speculative-heuristic,10,true,120.71,3,2.04,243,0,47,14,3,46.9
-warehouse outage,centralized,1,true,150.91,3,1.30,198,0,134,21,0,433.8
-warehouse outage,centralized,2,true,145.21,3,1.35,128,0,131,21,0,434.4
-warehouse outage,centralized,3,true,147.87,3,1.34,250,0,117,15,0,433.4
-warehouse outage,centralized,4,true,125.60,3,3.22,145,0,105,16,4,433.7
-warehouse outage,centralized,5,true,120.56,3,2.31,196,0,120,20,3,433.1
-warehouse outage,centralized,6,true,163.25,3,1.36,180,0,127,4,0,433.3
-warehouse outage,centralized,7,true,169.69,3,1.34,256,0,251,95,0,433.1
-warehouse outage,centralized,8,true,128.23,3,1.31,200,0,135,33,0,435.5
-warehouse outage,centralized,9,true,139.66,3,1.60,177,0,118,2,0,434.4
-warehouse outage,centralized,10,true,133.11,3,1.83,240,0,128,26,0,433.7
+warehouse outage,centralized,1,true,119.48,3,2.96,293,0,103,9,4,432.1
+warehouse outage,centralized,2,true,147.51,3,2.08,287,17,180,75,0,432.7
+warehouse outage,centralized,3,true,122.81,3,2.39,220,0,106,25,4,432.9
+warehouse outage,centralized,4,true,116.34,3,2.91,215,0,113,15,4,431.6
+warehouse outage,centralized,5,true,167.90,3,1.34,192,0,124,6,0,432.9
+warehouse outage,centralized,6,true,209.14,3,2.19,320,43,157,49,0,429.8
+warehouse outage,centralized,7,true,142.33,3,1.82,312,0,132,30,0,432.8
+warehouse outage,centralized,8,true,133.79,3,1.28,216,0,123,17,0,435.0
+warehouse outage,centralized,9,true,132.98,3,1.65,258,0,140,20,0,432.3
+warehouse outage,centralized,10,true,115.26,3,2.99,194,0,118,23,4,431.6

@@ -56,29 +56,40 @@ impl Layout {
         p.spawn + V2::new((i % p.spawn_cols) as f32, (i / p.spawn_cols) as f32)
     }
 
-    /// A long sofa that starts sideways and has to be turned to fit through a
-    /// 3 m doorway, then dodge a pillar on the way to the goal.
-    pub fn doorway() -> Self {
+    /// An assembly hall: a sofa weaves an S-shaped route between large
+    /// machines to a loading dock. East under one machine, north up a 4 m
+    /// channel between two machines (upright), east above the second one,
+    /// south down the dock corridor, then flat into the dock bay.
+    pub fn hall() -> Self {
         let mut walls = border(40.0, 24.0);
-        let t = 0.3;
         walls.extend([
-            // Dividing wall with a doorway at y 10.5..13.5.
-            Aabb::new(V2::new(20.0 - t, 0.0), V2::new(20.0 + t, 10.5)),
-            Aabb::new(V2::new(20.0 - t, 13.5), V2::new(20.0 + t, 24.0)),
-            // Pillar in the second room.
-            Aabb::from_center(V2::new(27.0, 15.0), V2::new(1.0, 1.0)),
+            // Press line: a big machine block over the west of the hall,
+            // leaving an 8 m corridor beneath it.
+            Aabb::new(V2::new(8.0, 8.0), V2::new(14.0, 24.0)),
+            // CNC cell: a second block from the floor up, leaving a 4 m
+            // channel between the two and an aisle above it.
+            Aabb::new(V2::new(18.0, 0.0), V2::new(24.0, 13.0)),
+            // Parts racks in the upper aisle.
+            Aabb::from_center(V2::new(28.0, 19.0), V2::new(0.6, 0.6)),
+            Aabb::from_center(V2::new(33.0, 20.5), V2::new(0.6, 0.6)),
+            // Loading dock bay in the south-east corner: a roof wall and a
+            // stub that narrow its mouth to 5.5 m.
+            Aabb::new(V2::new(31.0, 9.0), V2::new(40.0, 9.6)),
+            Aabb::new(V2::new(31.0, 0.0), V2::new(31.6, 3.5)),
         ]);
         Self {
             arena: Aabb::new(V2::ZERO, V2::new(40.0, 24.0)),
             walls,
             payloads: vec![PayloadSpec {
                 name: "A",
-                start: V2::new(8.0, 6.0),
-                angle: FRAC_PI_2,
+                start: V2::new(5.0, 4.0),
+                angle: 0.0,
                 half: V2::new(2.0, 0.6),
-                goal: V2::new(33.0, 19.0),
+                goal: V2::new(36.0, 5.5),
                 robots: 16,
-                spawn: V2::new(2.0, 13.0),
+                // Parked in the corridor beside the sofa: robots drive
+                // straight to their grip spot and can't path round machines.
+                spawn: V2::new(9.0, 1.0),
                 spawn_cols: 4,
             }],
             chokepoints: vec![],
@@ -188,7 +199,7 @@ mod tests {
 
     #[test]
     fn spawns_are_clear_of_walls() {
-        for l in [Layout::doorway(), Layout::warehouse()] {
+        for l in [Layout::hall(), Layout::warehouse()] {
             for id in 0..l.n_robots() {
                 let p = l.spawn_pos(id);
                 assert!(

@@ -15,7 +15,7 @@ fn run(control: ControlMode, edge_online: bool, limit: f32) -> (Session, Option<
 }
 
 #[test]
-fn speculative_swarm_delivers_through_doorway() {
+fn speculative_swarm_delivers_through_the_hall() {
     let (s, reached) = run(ControlMode::Speculative, true, 150.0);
     assert!(
         reached.is_some(),
@@ -30,12 +30,8 @@ fn speculative_swarm_delivers_through_doorway() {
 
 #[test]
 fn reflexes_alone_do_not_get_through() {
-    let (s, reached) = run(ControlMode::Speculative, false, 150.0);
+    let (_, reached) = run(ControlMode::Speculative, false, 150.0);
     assert!(reached.is_none());
-    assert!(
-        s.swarm.world.object_state(0).pos.x < 20.0,
-        "should be stuck in the first room"
-    );
 }
 
 #[test]
