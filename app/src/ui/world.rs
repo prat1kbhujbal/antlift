@@ -31,6 +31,9 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
         draw_box(v, w.center(), 0.0, w.half(), WALL);
     }
 
+    if layout.payloads.len() > 1 {
+        draw_blocks(v, edge);
+    }
     draw_zones(v, layout, edge);
 
     for (k, spec) in layout.payloads.iter().enumerate() {
@@ -85,6 +88,24 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
         draw_line(mid.x, mid.y, nose.x, nose.y, 2.0, BG);
         if layout.payloads.len() > 1 {
             draw_text(spec.name, mid.x - 5.0, mid.y + 6.0, 18.0, BG);
+        }
+        let waiting = edge
+            .plans
+            .iter()
+            .find(|p| p.team == k)
+            .and_then(|p| p.traffic_wait)
+            .filter(|_| !s.swarm.delivered(k));
+        if let Some(other) = waiting {
+            let text = format!("WAITING for {}", layout.payloads[other].name);
+            let w = super::text_width(&text, 15.0);
+            draw_rectangle(
+                mid.x - w / 2.0 - 4.0,
+                mid.y - 34.0,
+                w + 8.0,
+                18.0,
+                alpha(BG, 0.85),
+            );
+            draw_text(&text, mid.x - w / 2.0, mid.y - 20.0, 15.0, RISK);
         }
     }
 
@@ -225,6 +246,7 @@ fn draw_packets(pane: &Pane, v: &View, now: f32) {
         }
         let color = match x.kind {
             PacketKind::Tree => SPEC,
+            PacketKind::Permit => alpha(RISK, 0.9),
             PacketKind::Command => alpha(CENT, 0.9),
             PacketKind::State => alpha(REMOTE, 0.75),
             PacketKind::Surprise => MISS,
@@ -240,6 +262,23 @@ fn packet_radius(bytes: f32) -> f32 {
 }
 
 /// The edge's learned map of where its predictions failed.
+/// Floor reserved by the traffic manager, tinted by owner team.
+fn draw_blocks(v: &View, edge: &EdgeView) {
+    let (owner, nx, cell) = &edge.blocks;
+    if *nx == 0 {
+        return;
+    }
+    for (i, o) in owner.iter().enumerate() {
+        let Some(k) = o else { continue };
+        let c = TEAMS[k % TEAMS.len()];
+        let x = (i % nx) as f32 * cell;
+        let y = (i / nx) as f32 * cell;
+        let a = v.px(V2::new(x, y + cell));
+        let s = v.len(*cell);
+        draw_rectangle(a.x + 1.0, a.y + 1.0, s - 2.0, s - 2.0, alpha(c, 0.10));
+    }
+}
+
 fn draw_heat(v: &View, edge: &EdgeView) {
     let (heat, nx, cell) = &edge.heat;
     if *nx == 0 {

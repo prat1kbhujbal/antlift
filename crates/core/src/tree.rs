@@ -89,6 +89,13 @@ pub struct ContingencyTree {
     pub slot: V2,
     /// Node 0 is the entry node.
     pub nodes: Vec<Node>,
+    /// Traffic permit when the tree was built: robots may advance up to this
+    /// node (255 = no limit). Later changes arrive as permit messages.
+    pub permit: NodeId,
+    /// Transit route for a robot that isn't gripping and can't drive
+    /// straight to its payload (walls in the way): waypoints to follow before
+    /// the final approach. Usually empty.
+    pub via: Vec<V2>,
 }
 
 impl ContingencyTree {
@@ -158,6 +165,11 @@ impl ContingencyTree {
                 w.push(e.to);
             }
         }
+        w.push(self.permit);
+        w.push(self.via.len() as u8);
+        for p in &self.via {
+            put_pos(&mut w, *p);
+        }
         w
     }
 
@@ -220,6 +232,9 @@ impl ContingencyTree {
             }
             nodes.push(Node { action, edges });
         }
+        let permit = r.u8()?;
+        let n_via = r.u8()?;
+        let via = (0..n_via).map(|_| r.pos()).collect::<Option<Vec<_>>>()?;
         Some(Self {
             version,
             valid_until,
@@ -227,6 +242,8 @@ impl ContingencyTree {
             team,
             slot,
             nodes,
+            permit,
+            via,
         })
     }
 }
@@ -290,6 +307,8 @@ mod tests {
             role: Role::Steerer,
             team: 2,
             slot: V2::new(-2.0, 0.85),
+            via: vec![V2::new(3.0, 4.0), V2::new(5.5, 4.25)],
+            permit: 2,
             nodes: vec![
                 Node {
                     action: Action::Approach,
@@ -340,6 +359,9 @@ mod tests {
         assert_eq!(d.version, t.version);
         assert_eq!(d.role, t.role);
         assert_eq!(d.team, 2);
+        assert_eq!(d.via.len(), 2);
+        assert_eq!(d.permit, 2);
+        assert!(d.via[1].dist(V2::new(5.5, 4.25)) < 0.01);
         assert_eq!(d.nodes.len(), 3);
         match d.nodes[1].action {
             Action::Push { target, heading } => {

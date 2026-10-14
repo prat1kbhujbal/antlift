@@ -24,6 +24,17 @@ const JAM_RETRIES: u8 = 3;
 /// Keep the current grip if the edge's slot is this close to it.
 const SLOT_KEEP_DIST: f32 = 0.4;
 const HEARTBEAT_PERIOD: f32 = 1.0;
+/// A transit waypoint counts as reached within this distance (m)...
+const VIA_REACHED: f32 = 0.6;
+/// ...and the route is dropped for the direct approach this close to the slot (m).
+const VIA_DROP: f32 = 2.5;
+/// The final hold keeps the payload on its goal with this fraction of the
+/// carrying effort.
+const HOLD_GAIN: f32 = 0.5;
+/// Robots park once their payload is this slow at its goal (m/s).
+const PARK_SPEED: f32 = 0.1;
+/// Permit value meaning "no traffic limit".
+pub const NO_LIMIT: NodeId = NodeId::MAX;
 /// Parked robots only check in this often.
 const PARKED_HEARTBEAT: f32 = 5.0;
 /// A parked robot whose payload is nudged further than this from its goal
@@ -100,6 +111,14 @@ pub struct Brain {
     pub last_edge: Option<(NodeId, NodeId, bool, f32)>,
     /// Delivered and holding: see [`Mode::Parked`].
     parked: bool,
+    /// Next point of the tree's transit route to follow.
+    via_next: usize,
+    /// Traffic permit: furthest tree node this robot may advance to.
+    permit: NodeId,
+    /// This leg is done but the next one isn't permitted yet.
+    traffic_hold: bool,
+    /// Heading the payload had when the plan's final hold began.
+    hold_heading: Option<f32>,
 }
 
 impl Brain {
@@ -118,6 +137,10 @@ impl Brain {
             jam_tries: 0,
             last_edge: None,
             parked: false,
+            via_next: 0,
+            permit: NO_LIMIT,
+            traffic_hold: false,
+            hold_heading: None,
         }
     }
 
@@ -153,11 +176,38 @@ impl Brain {
             self.reflex_slot = None;
         }
         let same_plan = self.tree.as_ref().is_some_and(|t| t.nodes == tree.nodes);
+        // A transit route is planned from where the robot is now.
+        self.via_next = 0;
+        self.permit = tree.permit;
         self.tree = Some(tree);
         if !same_plan {
             self.enter(0);
         }
         Some(ack)
+    }
+
+    /// A traffic permit for plan `version` (ignored if it's for another plan).
+    pub fn receive_permit(&mut self, version: u32, node: NodeId) {
+        if self.tree.as_ref().is_some_and(|t| t.version == version) {
+            self.permit = node;
+        }
+    }
+
+    /// Transit waypoints still to visit on the way to the payload.
+    pub fn transit(&self) -> &[V2] {
+        self.tree
+            .as_ref()
+            .map_or(&[], |t| &t.via[self.via_next.min(t.via.len())..])
+    }
+
+    /// Furthest tree node this robot may currently advance to.
+    pub fn permit(&self) -> NodeId {
+        self.permit
+    }
+
+    /// Held back by traffic: this leg is done, the next isn't permitted yet.
+    pub fn held_by_traffic(&self) -> bool {
+        self.tree.is_some() && self.traffic_hold
     }
 
     pub fn tick(&mut self, s: &Sense, dt: f32, up: &mut Vec<Uplink>) -> (Command, Option<Event>) {
@@ -183,7 +233,8 @@ impl Brain {
             }
 
             let pushing = matches!(action, Action::Push { .. } | Action::Rotate { .. });
-            if pushing && s.attached {
+            // Waiting for traffic isn't a stall.
+            if pushing && s.attached && !self.traffic_hold {
                 let o = &s.object;
                 let progressed = self.anchor.is_none_or(|(p, a)| {
                     o.pos.dist(p) > STALL_DIST || wrap_angle(o.angle - a).abs() > STALL_TURN
@@ -215,13 +266,52 @@ impl Brain {
                 }
             }
 
-            if !s.attached || cmd.release {
-                let v = approach(s, slot);
+            let delivered =
+                s.object.pos.dist(s.goal) < DELIVERED_RADIUS && s.object.vel.len() < PARK_SPEED;
+            if !s.attached && delivered {
+                // Our payload is already parked on its goal: pushing in to
+                // grip it now would only shove it off. Stay put.
+                cmd.vel = Some(V2::ZERO);
+                cmd.force = track(V2::ZERO, s.vel);
+            } else if !s.attached || cmd.release {
+                let target = slot_world(&s.object, slot);
+                let tree = self.tree.as_ref().unwrap();
+                // Follow the transit route round walls first, skipping points
+                // already reached, until the payload is close.
+                while tree
+                    .via
+                    .get(self.via_next)
+                    .is_some_and(|p| s.pos.dist(*p) < VIA_REACHED)
+                {
+                    self.via_next += 1;
+                }
+                let via = tree
+                    .via
+                    .get(self.via_next)
+                    .copied()
+                    .filter(|_| s.pos.dist(target) > VIA_DROP);
+                let v = match via {
+                    Some(p) => ((p - s.pos) * 2.0).clamp_len(1.5),
+                    None => approach(s, slot),
+                };
                 cmd.vel = Some(v);
                 cmd.force = track(v, s.vel);
                 if s.pos.dist(slot_world(&s.object, slot)) < GRIP_DIST {
                     cmd.grip = true;
                 }
+            } else if is_final_hold(tree, self.node) && s.object.pos.dist(s.goal) < UNPARK_RADIUS {
+                // A final hold at the goal keeps the payload on it (gently,
+                // at the heading it arrived with), not just still: otherwise
+                // it can coast or creep off it with nobody to bring it back.
+                let heading = *self.hold_heading.get_or_insert(s.object.angle);
+                let hold = Action::Push {
+                    target: s.goal,
+                    heading,
+                };
+                cmd.force = carry(s, hold, role) * HOLD_GAIN;
+            } else if self.held_by_traffic() {
+                // This leg isn't permitted yet: hold the payload where it is.
+                cmd.force = carry(s, Action::Hold, role);
             } else {
                 cmd.force = carry(s, action, role);
             }
@@ -231,11 +321,12 @@ impl Brain {
 
         // Parked: the plan's final hold, gripping, with the payload at its goal.
         let at_goal = s.object.pos.dist(s.goal);
-        let final_hold = self.tree.as_ref().is_some_and(|t| {
-            let n = &t.nodes[self.node as usize];
-            n.action == Action::Hold && n.edges.is_empty()
-        });
-        if final_hold && s.attached && at_goal < DELIVERED_RADIUS {
+        let final_hold = self
+            .tree
+            .as_ref()
+            .is_some_and(|t| is_final_hold(t, self.node));
+        let settled = s.object.vel.len() < PARK_SPEED;
+        if final_hold && s.attached && at_goal < DELIVERED_RADIUS && settled {
             self.parked = true;
         } else if self.parked && (!final_hold || at_goal > UNPARK_RADIUS) {
             self.parked = false;
@@ -260,6 +351,7 @@ impl Brain {
     }
 
     fn enter(&mut self, node: NodeId) {
+        self.hold_heading = None;
         self.node = node;
         self.node_time = 0.0;
         self.stall_time = 0.0;
@@ -268,6 +360,7 @@ impl Brain {
     }
 
     fn follow_edges(&mut self, s: &Sense, up: &mut Vec<Uplink>) -> Option<Event> {
+        self.traffic_hold = false;
         let tree = self.tree.as_ref()?;
         let node = tree.nodes.get(self.node as usize)?;
         let edge = node
@@ -275,6 +368,12 @@ impl Brain {
             .iter()
             .find(|e| holds(e.when, s, self.node_time, self.stall_time))
             .copied()?;
+        // Nominal progress stops at the traffic permit: hold here until the
+        // edge grants the next leg. Gripping is always allowed.
+        if !edge.speculative && edge.to > self.permit && edge.when != Predicate::InContact {
+            self.traffic_hold = true;
+            return None;
+        }
         let version = tree.version;
         self.last_edge = Some((self.node, edge.to, edge.speculative, s.t));
         up.push(Uplink::BranchFired {
@@ -318,6 +417,9 @@ impl Brain {
             let Some(node) = tree.nodes.get(n as usize) else {
                 break;
             };
+            if n > self.permit && best.is_some() {
+                break; // not permitted to skip ahead past the traffic limit
+            }
             if let Action::Push { target, .. } = node.action {
                 let d = s.object.pos.dist(target);
                 match best {
@@ -378,6 +480,12 @@ impl Brain {
             ..Default::default()
         }
     }
+}
+
+/// The plan's last node: hold with nowhere further to go.
+fn is_final_hold(tree: &ContingencyTree, node: NodeId) -> bool {
+    let n = &tree.nodes[node as usize];
+    n.action == Action::Hold && n.edges.is_empty()
 }
 
 fn holds(p: Predicate, s: &Sense, node_time: f32, stall_time: f32) -> bool {
@@ -514,4 +622,91 @@ fn carry(s: &Sense, action: Action, role: Role) -> V2 {
         f += tangent * (w_des * 10.0 + (w_des - o.angvel) * 20.0);
     }
     f
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Edge, Node};
+
+    fn push(target: V2, to: NodeId) -> Node {
+        Node {
+            action: Action::Push {
+                target,
+                heading: 0.0,
+            },
+            edges: vec![Edge {
+                when: Predicate::Reached {
+                    target,
+                    radius: 0.5,
+                },
+                to,
+                speculative: false,
+            }],
+        }
+    }
+
+    #[test]
+    fn a_permit_holds_the_robot_at_the_end_of_its_grant() {
+        let tree = ContingencyTree {
+            version: 7,
+            valid_until: 100.0,
+            role: Role::Pusher,
+            team: 0,
+            slot: V2::new(-1.27, 0.0),
+            nodes: vec![
+                Node {
+                    action: Action::Approach,
+                    edges: vec![Edge {
+                        when: Predicate::InContact,
+                        to: 1,
+                        speculative: false,
+                    }],
+                },
+                push(V2::new(1.0, 0.0), 2),
+                push(V2::new(3.0, 0.0), 3),
+                Node {
+                    action: Action::Hold,
+                    edges: vec![],
+                },
+            ],
+            permit: 1,
+            via: vec![],
+        };
+        let mut b = Brain::new(0, 0);
+        b.receive(&tree.encode()).unwrap();
+        // Gripping, with the payload already at the first waypoint.
+        let s = Sense {
+            t: 0.0,
+            pos: V2::new(-0.27, 0.0),
+            vel: V2::ZERO,
+            attached: true,
+            grip_slot: V2::new(-1.27, 0.0),
+            object: ObjectState {
+                pos: V2::new(1.0, 0.0),
+                half: V2::new(1.0, 0.5),
+                ..Default::default()
+            },
+            goal: V2::new(3.0, 0.0),
+        };
+        let mut up = vec![];
+        for _ in 0..3 {
+            b.tick(&s, 0.1, &mut up);
+        }
+        assert!(b.held_by_traffic(), "next leg isn't permitted");
+        assert!(b.action() == Some(tree.nodes[1].action));
+        // Waiting for traffic is not a stall: nothing gets reported.
+        for _ in 0..100 {
+            b.tick(&s, 0.1, &mut up);
+        }
+        assert!(!up.iter().any(|u| matches!(u, Uplink::Surprise { .. })));
+        // A permit for another plan is ignored; one for this plan releases it.
+        b.receive_permit(6, NO_LIMIT);
+        b.tick(&s, 0.1, &mut up);
+        assert!(b.held_by_traffic());
+        b.receive_permit(7, NO_LIMIT);
+        b.tick(&s, 0.1, &mut up);
+        assert!(!b.held_by_traffic());
+        assert!(b.action() == Some(tree.nodes[2].action));
+    }
 }

@@ -153,6 +153,12 @@ pub mod theme {
     pub const RISK: Color = rgb(0xff, 0xb3, 0x40);
     pub const PARKED: Color = rgb(0x8f, 0xd6, 0x9a);
     pub const GHOST: Color = rgb(0xa8, 0xd8, 0xff);
+    /// Per-team tints for reserved floor.
+    pub const TEAMS: [Color; 3] = [
+        rgb(0x5c, 0xa8, 0xff),
+        rgb(0xff, 0x9e, 0x5c),
+        rgb(0xc0, 0x8c, 0xff),
+    ];
 
     pub fn alpha(c: Color, a: f32) -> Color {
         Color::new(c.r, c.g, c.b, c.a * a)

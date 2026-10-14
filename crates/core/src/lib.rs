@@ -8,7 +8,7 @@ pub mod layout;
 pub mod msg;
 pub mod tree;
 
-pub use brain::{track, Brain, Command, Event, Mode, Sense};
+pub use brain::{track, Brain, Command, Event, Mode, Sense, NO_LIMIT};
 pub use geom::{axis_error, wrap_angle, Aabb, V2};
 pub use layout::{Layout, DELIVERED_RADIUS, ROBOT_RADIUS, SLOT_OFFSET};
 pub use msg::{ControlMode, DownBody, Downlink, ObjectState, RobotId, RobotObs, Snapshot, Uplink};

@@ -193,6 +193,66 @@ impl Grid {
         ((a / (PI / HEADINGS as f32)).round() as usize) % HEADINGS
     }
 
+    /// Every point along a to b has at least `min_clear` clearance.
+    pub fn line_clear(&self, a: V2, b: V2, min_clear: f32) -> bool {
+        let n = (a.dist(b) / 0.1).ceil().max(1.0) as usize;
+        (0..=n).all(|k| self.clearance_at(a + (b - a) * (k as f32 / n as f32)) >= min_clear)
+    }
+
+    /// A 2D route for a point needing `min_clear` clearance (a robot): a
+    /// distance field from the goal, steepest descent from the start, then
+    /// shortcuts wherever the straight line stays clear. Starts at `from`,
+    /// ends at `to`. None if unreachable.
+    pub fn route_2d(&self, from: V2, to: V2, min_clear: f32) -> Option<Vec<V2>> {
+        let goal = self.cell_of(to);
+        let field = self.distance_field(goal, min_clear);
+        let idx = |(x, y): (usize, usize)| y * self.nx + x;
+        // A robot squeezed against a wall may start in a cell that's "too
+        // tight": step out to the nearest free cell first (the nearest, not
+        // the one nearest the goal, which may be across a thin obstacle).
+        let (sx, sy) = self.cell_of(from);
+        let r = 6;
+        let mut c = (sy.saturating_sub(r)..=(sy + r).min(self.ny - 1))
+            .flat_map(|y| (sx.saturating_sub(r)..=(sx + r).min(self.nx - 1)).map(move |x| (x, y)))
+            .filter(|&c| field[idx(c)].is_finite())
+            .min_by(|&a, &b| {
+                let d = |c: (usize, usize)| self.center(c.0, c.1).dist(from);
+                d(a).total_cmp(&d(b))
+                    .then(field[idx(a)].total_cmp(&field[idx(b)]))
+            })?;
+        let mut pts = vec![from, self.center(c.0, c.1)];
+        while c != goal {
+            let (x, y) = (c.0 as isize, c.1 as isize);
+            let next = MOVES
+                .iter()
+                .map(|&(dx, dy, _)| (x + dx, y + dy))
+                .filter(|&(nx, ny)| {
+                    nx >= 0 && ny >= 0 && nx < self.nx as isize && ny < self.ny as isize
+                })
+                .map(|(nx, ny)| (nx as usize, ny as usize))
+                .min_by(|&a, &b| field[idx(a)].total_cmp(&field[idx(b)]))?;
+            if field[idx(next)] >= field[idx(c)] {
+                break;
+            }
+            c = next;
+            pts.push(self.center(c.0, c.1));
+        }
+        pts.push(to);
+
+        // Shortcut: from each kept point jump to the furthest visible one.
+        let mut out = vec![pts[0]];
+        let mut i = 0;
+        while i + 1 < pts.len() {
+            let j = (i + 1..pts.len())
+                .rev()
+                .find(|&j| self.line_clear(pts[i], pts[j], min_clear))
+                .unwrap_or(i + 1);
+            out.push(pts[j]);
+            i = j;
+        }
+        Some(out)
+    }
+
     /// Dijkstra from `goal` over cells with at least `min_clear` clearance.
     /// Admissible heuristic for [`Self::plan`].
     fn distance_field(&self, goal: (usize, usize), min_clear: f32) -> Vec<f32> {
@@ -480,6 +540,23 @@ mod tests {
             assert!(on_grid || g.slack(*p, &fp) >= SMOOTH_TIGHT - 0.01, "{p:?}");
         }
         assert_eq!(smooth.last().unwrap().pos, raw.last().unwrap().pos);
+    }
+
+    #[test]
+    fn robot_routes_go_round_machines() {
+        let (l, g, _) = setup();
+        // From the west strip, round the press line, to the far side of it.
+        let (from, to) = (V2::new(3.0, 18.0), V2::new(16.0, 18.0));
+        assert!(!g.line_clear(from, to, 0.3), "test needs a wall in the way");
+        let route = g.route_2d(from, to, 0.3).expect("route exists");
+        assert_eq!(route[0], from);
+        assert_eq!(*route.last().unwrap(), to);
+        // Clearance is looked up per cell, so allow half a cell of slack
+        // where a leg rounds a corner; a robot (0.25 m) still clears it.
+        for w in route.windows(2) {
+            assert!(g.line_clear(w[0], w[1], 0.3 - CELL / 2.0), "{w:?}");
+        }
+        let _ = l;
     }
 
     #[test]

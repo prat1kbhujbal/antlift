@@ -10,24 +10,27 @@
 //! With several teams it also coordinates them: narrow passages
 //! ([`Layout::chokepoints`]) are granted as reservations, a team only enters
 //! one when it holds it (and every choke point chained right behind it, so
-//! nobody stops inside a corridor), and robots of teams that have delivered
-//! are moved to the teams that need help most.
+//! nobody stops inside a corridor), the open floor is shared through block
+//! reservations and permits ([`traffic`]), and robots of teams that have
+//! delivered are moved to the teams that need help most.
 //!
 //! In [`ControlMode::Centralized`] it is the baseline instead: it runs every
 //! robot's brain itself on streamed robot state and sends force commands.
 
 pub mod grid;
 pub mod rollout;
+pub mod traffic;
 
 use antlift_core::{
     axis_error, Aabb, Action, Brain, ContingencyTree, ControlMode, DownBody, Downlink, Edge, Event,
     Layout, Mode, Node, NodeId, ObjectState, Predicate, Role, Sense, Snapshot, Uplink,
-    DELIVERED_RADIUS, ROBOT_RADIUS, SLOT_OFFSET, V2,
+    DELIVERED_RADIUS, NO_LIMIT, ROBOT_RADIUS, SLOT_OFFSET, V2,
 };
 use grid::{Footprint, Grid, Pose};
 use rollout::Ghost;
 use std::f32::consts::FRAC_PI_2;
 use std::time::Instant;
+use traffic::Blocks;
 
 #[derive(Clone, Copy, Debug)]
 pub struct EdgeConfig {
@@ -57,6 +60,9 @@ pub struct EdgeConfig {
     pub smooth: bool,
     /// Centralized mode: command rate (s).
     pub command_period: f32,
+    /// Share the open floor between teams with block reservations and
+    /// permits (off: teams only coordinate at choke points).
+    pub traffic: bool,
 }
 
 impl Default for EdgeConfig {
@@ -73,6 +79,7 @@ impl Default for EdgeConfig {
             zone_lookahead: 10.0,
             smooth: false,
             command_period: 0.05,
+            traffic: true,
         }
     }
 }
@@ -133,6 +140,11 @@ pub struct Plan {
     /// The choke point this plan stops short of because it's too far away
     /// to claim yet; the plan is extended as the team gets closer.
     pub short_of: Option<usize>,
+    /// The team whose reserved floor this one is waiting at the end of its
+    /// permit for.
+    pub traffic_wait: Option<usize>,
+    /// Waypoints the team is permitted to go up to (exclusive).
+    pub granted: usize,
 }
 
 /// Where a plan must stop because of a choke point.
@@ -157,6 +169,13 @@ pub struct EdgeStats {
     pub zone_waits: u64,
     /// Robots moved from a delivered team to one that needed help.
     pub reassigned: u64,
+    /// Times a team had to stop at the end of its permit for another team.
+    pub traffic_waits: u64,
+    /// Deadlocks (or long waits) broken by rerouting a team.
+    pub reroutes: u64,
+    /// Reroutes that found no way round, so the team made way instead.
+    pub detours: u64,
+    pub permits_sent: u64,
     /// Centralized mode: branches/surprises inside the edge-hosted brains.
     pub local_hits: u64,
     pub local_misses: u64,
@@ -186,6 +205,11 @@ struct RobotBook {
     brain: Brain,
     /// Centralized mode: last streamed state.
     state: Option<RemoteState>,
+    /// Last traffic permit sent and when, and the one before it (where the
+    /// robot would be stuck if the last one got lost).
+    permit_sent: NodeId,
+    permit_t: f32,
+    permit_prev: NodeId,
 }
 
 #[derive(Clone, Copy)]
@@ -211,6 +235,20 @@ struct Team {
     /// with it). Otherwise replans prefer to stay near it, so the team
     /// doesn't flip between equally good routes as others move around.
     fresh_route: bool,
+    /// Traffic: next waypoint the payload hasn't reached yet.
+    progress: usize,
+    /// Traffic: waypoints granted (the permit), and as a tree node.
+    granted: usize,
+    permit: NodeId,
+    /// Traffic: who this team is stopped for, and since when.
+    waits_for: Option<usize>,
+    wait_since: f32,
+    last_reroute: f32,
+    /// Floor the next plan must keep off (a deadlock reroute).
+    avoid: Vec<Aabb>,
+    /// A make-way spot this team is heading for instead of its goal, and
+    /// since when (a deadlock it couldn't route round).
+    detour: Option<(V2, f32)>,
 }
 
 pub struct EdgeServer {
@@ -227,6 +265,11 @@ pub struct EdgeServer {
     heat: Vec<f32>,
     heat_nx: usize,
     grid_cache: Option<(Vec<Aabb>, Grid)>,
+    /// Walls plus parked (delivered) payloads, for robots' transit routes.
+    walls_grid: Grid,
+    /// Traffic blocks and who owns each.
+    blocks: Blocks,
+    block_owner: Vec<Option<usize>>,
     /// Sim time of the latest tick, for timing acks.
     now: f32,
     next_command: f32,
@@ -240,6 +283,13 @@ const PLAN_RETRY: f32 = 2.0;
 const WAIT_RECHECK: f32 = 5.0;
 /// Clearance kept around other payloads (their robots) when planning (m).
 const OTHER_MARGIN: f32 = 0.6;
+/// Robots further than this from their grip spot, without a straight line
+/// to it, get a transit route (m).
+const TRANSIT_MIN: f32 = 3.0;
+/// Clearance a robot's transit route keeps from walls (m).
+const TRANSIT_CLEAR: f32 = ROBOT_RADIUS + 0.1;
+/// At most this many transit waypoints per tree.
+const MAX_VIA: usize = 8;
 /// Staying within this distance of the current route is preferred (m)...
 const STICKY_RADIUS: f32 = 1.5;
 /// ...by this extra cost multiplier on cells off it.
@@ -253,6 +303,22 @@ const EXTEND_GAP: f32 = 2.0;
 const SURPRISE_REPLAN_GAP: f32 = 2.0;
 /// Remember this many jam spots per team.
 const MAX_JAM_SPOTS: usize = 6;
+/// Robots walking past a parked payload keep this much further off it (m).
+const PARKED_BERTH: f32 = 0.3;
+/// A payload slower than this at its goal has been delivered (m/s).
+const SETTLED_SPEED: f32 = 0.1;
+/// Traffic: grant floor this far along the route ahead of a payload (m).
+const TRAFFIC_LOOKAHEAD: f32 = 5.0;
+/// Traffic: a payload within this of a waypoint has reached it (m).
+const TRAFFIC_REACHED: f32 = 1.2;
+/// Traffic: reroute a team stopped this long for the same team (s)...
+const STUCK_WAIT: f32 = 15.0;
+/// ...or in a deadlock, but at most this often per team (s).
+const REROUTE_GAP: f32 = 10.0;
+/// A make-way detour ends after this long even if the spot isn't reached (s).
+const DETOUR_MAX: f32 = 30.0;
+/// Resend a permit if the robot hasn't moved on this long after it (s).
+const PERMIT_RESEND: f32 = 1.5;
 
 impl EdgeServer {
     pub fn new(layout: Layout, cfg: EdgeConfig) -> Self {
@@ -279,6 +345,9 @@ impl EdgeServer {
                     end_node: 0,
                     brain: Brain::new(i as u16, team as u8),
                     state: None,
+                    permit_sent: NO_LIMIT,
+                    permit_t: 0.0,
+                    permit_prev: NO_LIMIT,
                 }
             })
             .collect();
@@ -288,11 +357,17 @@ impl EdgeServer {
             .map(|_| Team {
                 need_replan: true,
                 last_plan_t: f32::NEG_INFINITY,
+                permit: NO_LIMIT,
+                last_reroute: f32::NEG_INFINITY,
                 ..Default::default()
             })
             .collect();
         let n_zones = layout.chokepoints.len();
+        let walls_grid = Grid::new(layout.arena, &layout.walls);
+        let blocks = Blocks::new(layout.arena);
         Self {
+            block_owner: vec![None; blocks.len()],
+            blocks,
             layout,
             cfg,
             snapshot: None,
@@ -304,6 +379,7 @@ impl EdgeServer {
             heat: vec![0.0; heat_nx * heat_ny],
             heat_nx,
             grid_cache: None,
+            walls_grid,
             now: 0.0,
             next_command: 0.0,
             stats: EdgeStats::default(),
@@ -339,6 +415,11 @@ impl EdgeServer {
     /// Owner team of each choke point.
     pub fn zone_owners(&self) -> &[Option<usize>] {
         &self.zones
+    }
+
+    /// Traffic blocks: owner of each, columns, block size (m).
+    pub fn traffic_blocks(&self) -> (&[Option<usize>], usize, f32) {
+        (&self.block_owner, self.blocks.nx, traffic::BLOCK)
     }
 
     /// The team robot `id` currently works for.
@@ -477,6 +558,15 @@ impl EdgeServer {
             let waiting = t.plan.as_ref().is_some_and(|p| p.waiting_for.is_some());
             let since = now - t.last_plan_t;
             let surprised = t.pending_surprise && since > SURPRISE_REPLAN_GAP;
+            // Made way: back to the real goal.
+            let pos = self.snapshot.as_ref().unwrap().objects[k].pos;
+            if t.detour
+                .is_some_and(|(spot, at)| pos.dist(spot) < 1.5 || now - at > DETOUR_MAX)
+            {
+                self.teams[k].detour = None;
+                self.teams[k].need_replan = true;
+                self.teams[k].fresh_route = true;
+            }
             if (failed && since > PLAN_RETRY) || (waiting && since > WAIT_RECHECK) || surprised {
                 self.teams[k].need_replan = true;
                 self.teams[k].pending_surprise = false;
@@ -546,6 +636,9 @@ impl EdgeServer {
             r.first_sent = now;
             r.retries = 0;
             r.last_bytes = bytes.clone();
+            r.permit_sent = self.teams[team].permit;
+            r.permit_t = now;
+            r.permit_prev = NO_LIMIT;
             // The final Hold sits right after the push chain; contingency nodes follow it.
             r.end_node = end_node;
             self.stats.trees_sent += 1;
@@ -554,6 +647,7 @@ impl EdgeServer {
                 body: DownBody::Tree(bytes),
             });
         }
+        self.send_permits(now, &mut out);
         out
     }
 
@@ -575,6 +669,13 @@ impl EdgeServer {
                 r.brain.receive(&tree.encode());
                 r.sent_version = version;
                 r.end_node = end_node;
+            }
+        }
+        // The edge-hosted brains get permits directly (no radio).
+        for r in &mut self.robots {
+            let permit = self.teams[r.team].permit;
+            if r.sent_version == self.teams[r.team].plan.as_ref().map_or(0, |p| p.version) {
+                r.brain.receive_permit(r.sent_version, permit);
             }
         }
 
@@ -601,16 +702,25 @@ impl EdgeServer {
             if r.brain.mode() == Mode::Parked {
                 continue; // done: the robot's watchdog holds it still
             }
+            // Lent to another team but still gripping the old payload: it
+            // must let go, not "carry" its new payload by dragging the old.
+            let wrong_payload = snap
+                .robots
+                .get(id)
+                .is_some_and(|o| o.attached && o.holding as usize != r.team);
             let sense = Sense {
                 t: now,
                 pos: st.pos,
                 vel: st.vel,
-                attached: st.attached,
+                attached: st.attached && !wrong_payload,
                 grip_slot: st.grip_slot,
                 object: objects[r.team],
                 goal: self.layout.payloads[r.team].goal,
             };
-            let (cmd, event) = r.brain.tick(&sense, dt, &mut internal);
+            let (mut cmd, event) = r.brain.tick(&sense, dt, &mut internal);
+            if wrong_payload {
+                cmd.release = true;
+            }
             match event {
                 Some(Event::Hit) => self.stats.local_hits += 1,
                 Some(Event::Miss) => self.stats.local_misses += 1,
@@ -702,13 +812,36 @@ impl EdgeServer {
         let mut newly_delivered = false;
         for k in 0..self.teams.len() {
             let snap = self.snapshot.as_ref().unwrap();
-            let done = snap.objects[k].pos.dist(self.layout.payloads[k].goal) < DELIVERED_RADIUS;
+            // Settled at the goal, not just passing through it: a payload
+            // still coasting would leave again once its robots are lent out.
+            let o = &snap.objects[k];
+            let done = o.pos.dist(self.layout.payloads[k].goal) < DELIVERED_RADIUS
+                && o.vel.len() < SETTLED_SPEED;
             if done && !self.teams[k].delivered {
                 self.teams[k].delivered = true;
                 newly_delivered = true;
             }
         }
+        if newly_delivered {
+            // Everyone else planned as if it were still on the move: plan
+            // round it now.
+            for t in self.teams.iter_mut().filter(|t| !t.delivered) {
+                t.need_replan = true;
+                t.fresh_route = true;
+            }
+            // Parked payloads are as good as walls for robots walking past,
+            // with a wider berth: brushing past one drags it off its goal.
+            let snap = self.snapshot.as_ref().unwrap();
+            let mut obstacles = self.layout.walls.clone();
+            obstacles.extend(
+                (0..self.teams.len())
+                    .filter(|&k| self.teams[k].delivered)
+                    .flat_map(|k| payload_pieces(&snap.objects[k], PARKED_BERTH)),
+            );
+            self.walls_grid = Grid::new(self.layout.arena, &obstacles);
+        }
         self.update_zones();
+        self.update_traffic();
         if newly_delivered || roster_changed.iter().any(|c| *c) {
             for k in self.rebalance() {
                 roster_changed[k] = true;
@@ -750,6 +883,277 @@ impl EdgeServer {
     }
 
     /// How many robots fit around payload `k` without crowding.
+    /// Free spots near payload `o` that are off the floor in `avoid`, nearest
+    /// first, for a team that has to get out of the way.
+    fn make_way_spots(
+        &mut self,
+        o: ObjectState,
+        fp: &Footprint,
+        obstacles: &[Aabb],
+        avoid: &[Aabb],
+    ) -> Vec<V2> {
+        let centre =
+            avoid.iter().fold(V2::ZERO, |a, b| a + b.center()) * (1.0 / avoid.len() as f32);
+        let arena = self.layout.arena;
+        let g = self.grid(obstacles);
+        let mut spots = vec![];
+        for r in [3.0, 4.5, 6.0, 8.0] {
+            let mut ring: Vec<V2> = (0..16)
+                .map(|i| o.pos + V2::from_angle(i as f32 * std::f32::consts::TAU / 16.0) * r)
+                .filter(|p| {
+                    p.x > arena.min.x && p.y > arena.min.y && p.x < arena.max.x && p.y < arena.max.y
+                })
+                .filter(|&p| {
+                    [o.angle, o.angle + FRAC_PI_2]
+                        .iter()
+                        .any(|&heading| g.slack(Pose { pos: p, heading }, fp) > 0.2)
+                })
+                .collect();
+            // Furthest from the others first.
+            ring.sort_by(|a, b| b.dist(centre).total_cmp(&a.dist(centre)));
+            spots.extend(ring);
+            if spots.len() >= 4 {
+                break;
+            }
+        }
+        spots.truncate(4);
+        spots
+    }
+
+    /// Block-reservation traffic control (see [`traffic`]): grant each team
+    /// the floor along the next stretch of its route, in priority order, set
+    /// its permit, and break deadlocks.
+    fn update_traffic(&mut self) {
+        if !self.cfg.traffic || self.teams.len() < 2 {
+            return; // nobody to share the floor with: permits stay unlimited
+        }
+        let Some(s) = &self.snapshot else { return };
+        let horizon = self.cfg.horizon;
+        let ring = SLOT_OFFSET + ROBOT_RADIUS + 0.1;
+        let mut reqs = vec![];
+        let mut keys = vec![];
+        for k in 0..self.teams.len() {
+            let t = &self.teams[k];
+            let o = s.objects[k];
+            let plan = t.plan.as_ref().filter(|p| !p.waypoints.is_empty());
+            if t.delivered || plan.is_none() {
+                // Parked payloads keep their floor for good, and payloads
+                // waiting with no route (queued at a door) keep theirs too.
+                let mut body = vec![];
+                self.blocks.cover(payload_bounds(&o, ring), &mut body);
+                keys.push((false, f32::NEG_INFINITY));
+                reqs.push(traffic::Request {
+                    team: k,
+                    body,
+                    legs: vec![],
+                    first: 0,
+                    granted: 0,
+                    reach: 0,
+                });
+                continue;
+            }
+            let plan = plan.unwrap();
+            let wps = &plan.waypoints[..plan.waypoints.len().min(horizon)];
+            let n = wps.len();
+            // Waypoints the payload has reached (looking a few ahead, as
+            // turn-in-place waypoints share a position).
+            let from = t.progress.min(n);
+            let progress = (from..(from + 4).min(n))
+                .rev()
+                .find(|&i| wps[i].pos.dist(o.pos) < TRAFFIC_REACHED)
+                .map_or(from, |i| i + 1);
+            // Grant just in time: legs within the lookahead, at least one.
+            let mut reach = progress;
+            let mut d = 0.0;
+            let mut at = o.pos;
+            while reach < n && d <= TRAFFIC_LOOKAHEAD {
+                d += at.dist(wps[reach].pos);
+                at = wps[reach].pos;
+                reach += 1;
+            }
+            let reach = reach.max((progress + 1).min(n));
+            let footprint = |pos: V2, heading: f32| {
+                payload_bounds(
+                    &ObjectState {
+                        pos,
+                        angle: heading,
+                        ..o
+                    },
+                    ring,
+                )
+            };
+            let mut body = vec![];
+            self.blocks.cover(payload_bounds(&o, ring), &mut body);
+            let upto = reach.max(t.granted).min(n);
+            let legs = (progress..upto)
+                .map(|i| {
+                    let (from, heading) = if i == 0 {
+                        (o.pos, o.angle)
+                    } else {
+                        (wps[i - 1].pos, wps[i - 1].heading)
+                    };
+                    let mut leg = vec![];
+                    self.blocks.cover(footprint(from, heading), &mut leg);
+                    self.blocks
+                        .cover(footprint(wps[i].pos, wps[i].heading), &mut leg);
+                    leg
+                })
+                .collect();
+            let remaining: f32 = o.pos.dist(wps[progress.min(n - 1)].pos)
+                + plan.waypoints[progress.min(n - 1)..]
+                    .windows(2)
+                    .map(|w| w[0].pos.dist(w[1].pos))
+                    .sum::<f32>();
+            // A team inside a doorway goes first, then the one nearer done.
+            let in_door = self
+                .zones
+                .iter()
+                .zip(&self.zone_entered)
+                .any(|(z, e)| *z == Some(k) && *e);
+            keys.push((!in_door, remaining));
+            reqs.push(traffic::Request {
+                team: k,
+                body,
+                legs,
+                first: progress,
+                granted: t.granted.max(progress),
+                reach,
+            });
+        }
+        let mut order: Vec<usize> = (0..reqs.len()).collect();
+        order.sort_by(|&a, &b| {
+            keys[a]
+                .0
+                .cmp(&keys[b].0)
+                .then(keys[a].1.total_cmp(&keys[b].1))
+        });
+        let reqs: Vec<traffic::Request> = order.iter().map(|&i| reqs[i].clone()).collect();
+        let out = traffic::allocate(self.blocks.len(), &reqs);
+
+        let now = s.t;
+        let mut waits = vec![None; self.teams.len()];
+        for (r, (&granted, &waits_for)) in reqs.iter().zip(out.granted.iter().zip(&out.waits_for)) {
+            let k = r.team;
+            if self.teams[k].delivered || r.reach == 0 {
+                continue; // just holding its floor
+            }
+            let n = r.legs.len() + r.first;
+            let tree_len = self.end_node_of(k) as usize - 1;
+            let t = &mut self.teams[k];
+            t.progress = r.first;
+            t.granted = granted;
+            t.permit = if granted >= tree_len {
+                NO_LIMIT
+            } else {
+                granted as NodeId
+            };
+            // Only stopped for real once the payload is at the end of its grant.
+            let stopped = waits_for.filter(|_| granted <= r.first + 1 && granted < n);
+            if stopped.is_some() && stopped != t.waits_for {
+                t.wait_since = now;
+                self.stats.traffic_waits += 1;
+            }
+            t.waits_for = stopped;
+            waits[k] = stopped;
+            if let Some(plan) = t.plan.as_mut() {
+                plan.traffic_wait = stopped;
+                plan.granted = granted;
+            }
+        }
+        for k in 0..self.teams.len() {
+            if self.teams[k].delivered {
+                self.teams[k].permit = NO_LIMIT;
+                self.teams[k].waits_for = None;
+            }
+        }
+        self.block_owner = out.owner;
+
+        // Deadlocks: the lowest-priority team in a wait cycle reroutes out of
+        // the others' way (the next lowest if it just tried). A team stuck
+        // behind one that isn't moving reroutes too.
+        let rank = |k: usize| reqs.iter().position(|r| r.team == k).unwrap_or(usize::MAX);
+        let cooling = |k: usize| now - self.teams[k].last_reroute < REROUTE_GAP;
+        let mut reroute: Vec<(usize, Vec<usize>)> = vec![];
+        for k in 0..self.teams.len() {
+            if let Some(mut cycle) = traffic::cycle(&waits, k) {
+                if cycle.iter().min() != Some(&k) {
+                    continue; // handle each cycle once
+                }
+                cycle.sort_by_key(|&j| std::cmp::Reverse(rank(j)));
+                if let Some(&low) = cycle.iter().find(|&&j| !cooling(j)) {
+                    reroute.push((low, cycle.into_iter().filter(|&j| j != low).collect()));
+                }
+            } else if let Some(j) = waits[k] {
+                if now - self.teams[k].wait_since > STUCK_WAIT && !cooling(k) {
+                    reroute.push((k, vec![j]));
+                }
+            }
+        }
+        for (k, others) in reroute {
+            // Keep off where the others are and are about to drive, but not
+            // off the floor this team stands on, or it couldn't start.
+            let mut theirs = vec![];
+            for r in reqs.iter().filter(|r| others.contains(&r.team)) {
+                theirs.extend(&r.body);
+                r.legs.iter().for_each(|l| theirs.extend(l));
+            }
+            let mine: Vec<usize> = reqs
+                .iter()
+                .find(|r| r.team == k)
+                .map_or(vec![], |r| r.body.clone());
+            theirs.sort_unstable();
+            theirs.dedup();
+            let avoid: Vec<Aabb> = theirs
+                .into_iter()
+                .filter(|b| !mine.contains(b))
+                .map(|b| self.blocks.rect(b))
+                .collect();
+            let t = &mut self.teams[k];
+            t.last_reroute = now;
+            t.wait_since = now;
+            t.avoid = avoid;
+            t.fresh_route = true;
+            t.need_replan = true;
+            self.stats.reroutes += 1;
+        }
+    }
+
+    /// Permits for robots whose team's permit changed (or that seem to have
+    /// missed it: still where they were when it was sent).
+    fn send_permits(&mut self, now: f32, out: &mut Vec<Downlink>) {
+        for id in 0..self.robots.len() {
+            let team = self.robots[id].team;
+            let Some(version) = self.team_version(team) else {
+                continue;
+            };
+            let permit = self.teams[team].permit;
+            let r = &mut self.robots[id];
+            if !r.active || r.sent_version != version {
+                continue; // a tree with the current permit is on its way
+            }
+            let changed = r.permit_sent != permit;
+            let missed = r.reported_node == r.permit_prev
+                && r.reported_node < permit
+                && now - r.permit_t > PERMIT_RESEND;
+            if !(changed || missed) {
+                continue;
+            }
+            if changed {
+                r.permit_prev = r.permit_sent;
+            }
+            r.permit_sent = permit;
+            r.permit_t = now;
+            self.stats.permits_sent += 1;
+            out.push(Downlink {
+                robot: id as u16,
+                body: DownBody::Permit {
+                    version,
+                    node: permit,
+                },
+            });
+        }
+    }
+
     fn capacity(&self, k: usize) -> usize {
         // Irregular existing grips waste some room, hence the 0.85.
         (0.85 * perimeter(self.layout.payloads[k].half) / (2.0 * ROBOT_RADIUS + 0.05)) as usize
@@ -1071,10 +1475,20 @@ impl EdgeServer {
             .iter()
             .enumerate()
             .filter(|(j, _)| *j != k && self.teams[*j].delivered)
-            .map(|(_, o)| payload_bounds(o, OTHER_MARGIN))
+            .flat_map(|(_, o)| payload_pieces(o, OTHER_MARGIN))
             .collect();
         let mut with_others = s.obstacles.clone();
         with_others.extend_from_slice(&others);
+        // Breaking a deadlock: keep off the floor the other teams hold.
+        let avoid = std::mem::take(&mut self.teams[k].avoid);
+        with_others.extend_from_slice(&avoid);
+        // If there's no way round, somewhere nearby to get out of the way.
+        let make_way = if avoid.is_empty() || self.teams[k].detour.is_some() {
+            vec![]
+        } else {
+            self.make_way_spots(me, &fp, &with_others, &avoid)
+        };
+        let goal = self.teams[k].detour.map_or(spec.goal, |(spot, _)| spot);
         // Fall back step by step: crates can be shoved aside and other
         // payloads will move, so if they block every route, plan through
         // them and let contingencies and replanning deal with it.
@@ -1111,9 +1525,9 @@ impl EdgeServer {
         };
         // Each attempt is smoothed against the same obstacles it was planned with.
         let smooth = self.cfg.smooth;
-        let mut attempt = |obstacles: &[Aabb], penalty: &dyn Fn(V2) -> f32| {
+        let mut attempt = |obstacles: &[Aabb], penalty: &dyn Fn(V2) -> f32, goal: V2| {
             let g = self.grid(obstacles);
-            g.plan_with(start, spec.goal, &fp, penalty).map(|raw| {
+            g.plan_with(start, goal, &fp, penalty).map(|raw| {
                 if smooth {
                     g.smooth(&raw, &fp)
                 } else {
@@ -1121,12 +1535,28 @@ impl EdgeServer {
                 }
             })
         };
-        let mut poses = attempt(&with_others, &penalty);
+        let mut goal = goal;
+        let mut poses = attempt(&with_others, &penalty, goal);
+        let mut detour = None;
         if poses.is_none() {
-            poses = attempt(&s.obstacles, &penalty);
+            for &spot in &make_way {
+                poses = attempt(&with_others, &penalty, spot);
+                if poses.is_some() {
+                    goal = spot;
+                    detour = Some(spot);
+                    break;
+                }
+            }
+        }
+        if poses.is_none() {
+            poses = attempt(&s.obstacles, &penalty, goal);
         }
         if poses.is_none() && !s.obstacles.is_empty() {
-            poses = attempt(&[], &|_| 0.0);
+            poses = attempt(&[], &|_| 0.0, goal);
+        }
+        if let Some(spot) = detour {
+            self.teams[k].detour = Some((spot, s.t));
+            self.stats.detours += 1;
         }
         let poses = poses.unwrap_or_default();
         let path: Vec<V2> = poses.iter().map(|p| p.pos).collect();
@@ -1140,7 +1570,7 @@ impl EdgeServer {
         }
         let (route, target) = match &stop {
             Some(st) => (&poses[..=st.cut.min(poses.len().saturating_sub(1))], None),
-            None => (&poses[..], Some(spec.goal)),
+            None => (&poses[..], Some(goal)),
         };
         let grid = self.grid(&s.obstacles);
 
@@ -1213,7 +1643,14 @@ impl EdgeServer {
                 .as_ref()
                 .filter(|st| st.wait_for.is_none())
                 .map(|st| st.zone),
+            traffic_wait: None,
+            granted: 0,
         });
+        // A new plan starts with no floor granted beyond where it is.
+        let t = &mut self.teams[k];
+        t.progress = 0;
+        t.granted = 0;
+        self.update_traffic();
         let has_route = self.teams[k]
             .plan
             .as_ref()
@@ -1247,9 +1684,10 @@ impl EdgeServer {
         let trees: Vec<Option<Vec<u8>>> = (0..self.robots.len())
             .map(|id| {
                 let active = self.robots[id].active;
-                self.build_tree(id, snap.t)
-                    .filter(|_| active)
-                    .map(|t| t.encode())
+                self.build_tree(id, snap.t).filter(|_| active).map(|mut t| {
+                    t.permit = NO_LIMIT; // futures are about the route, not traffic
+                    t.encode()
+                })
             })
             .collect();
         let ghosts = rollout::simulate_all(&self.layout, snap, &trees, self.cfg.ghost_horizon, k);
@@ -1297,6 +1735,33 @@ impl EdgeServer {
             .and_then(|g| g.stall);
         plan.ghosts = ghosts;
         nominal_jam
+    }
+
+    /// Waypoints round walls for a robot that isn't gripping and can't drive
+    /// straight to its grip spot, e.g. one just lent to a team across the
+    /// warehouse. Empty when a straight drive works.
+    fn transit_route(&self, id: usize, team: usize, slot: V2) -> Vec<V2> {
+        let Some(s) = &self.snapshot else {
+            return vec![];
+        };
+        let obs = &s.robots[id];
+        if obs.attached && obs.holding as usize == team {
+            return vec![];
+        }
+        let o = s.objects[team];
+        let target = o.pos + slot.rotate(o.angle);
+        let g = &self.walls_grid;
+        if obs.pos.dist(target) < TRANSIT_MIN || g.line_clear(obs.pos, target, TRANSIT_CLEAR) {
+            return vec![];
+        }
+        g.route_2d(obs.pos, target, TRANSIT_CLEAR)
+            .map(|r| {
+                // Drop the start (where the robot is) and the end (the
+                // approach takes over near the payload).
+                let inner = &r[1..r.len().saturating_sub(1)];
+                inner.iter().take(MAX_VIA).copied().collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Nominal chain plus the most valuable contingencies that fit the budget,
@@ -1366,6 +1831,8 @@ impl EdgeServer {
             team: team as u8,
             slot,
             nodes,
+            permit: self.teams[team].permit,
+            via: self.transit_route(id, team, slot),
         };
 
         for c in &plan.candidates {
@@ -1513,6 +1980,29 @@ fn payload_bounds(o: &ObjectState, margin: f32) -> Aabb {
     let ex = (o.half.x * c).abs() + (o.half.y * s).abs() + margin;
     let ey = (o.half.x * s).abs() + (o.half.y * c).abs() + margin;
     Aabb::from_center(o.pos, V2::new(ex, ey))
+}
+
+/// A (rotated) payload plus a margin as a chain of small boxes along its
+/// long axis: much tighter than one box round it when it lies at an angle.
+fn payload_pieces(o: &ObjectState, margin: f32) -> Vec<Aabb> {
+    let n = (o.half.x / o.half.y.max(0.1)).ceil().max(1.0) as usize;
+    let piece = ObjectState {
+        half: V2::new(o.half.x / n as f32, o.half.y),
+        ..*o
+    };
+    let axis = V2::from_angle(o.angle);
+    (0..n)
+        .map(|i| {
+            let along = (2.0 * i as f32 + 1.0 - n as f32) * piece.half.x;
+            payload_bounds(
+                &ObjectState {
+                    pos: o.pos + axis * along,
+                    ..piece
+                },
+                margin,
+            )
+        })
+        .collect()
 }
 
 /// Length of the loop grip points sit on around a payload (m).
@@ -1689,6 +2179,44 @@ mod tests {
         let door = layout.chokepoints[d3];
         assert!(beam.waypoints.iter().all(|w| door.dist(w.pos) > 1.0));
         assert!(edge.stats.zone_waits >= 1);
+    }
+
+    #[test]
+    fn traffic_stops_a_team_short_of_another() {
+        // The pallet (B) sits right in front of the sofa (A), on its way to
+        // the staging door.
+        let layout = Layout::warehouse();
+        let mut snap = snapshot(&layout);
+        snap.objects[1].pos = V2::new(12.0, 6.5);
+        snap.objects[1].angle = 0.0;
+        let mut edge = EdgeServer::new(layout.clone(), no_ghosts());
+        edge.handle(Uplink::Camera(snap.clone()));
+        edge.tick(0.0);
+        let a = &edge.teams[0];
+        assert_eq!(a.waits_for, Some(1), "A waits for B");
+        assert_ne!(a.permit, NO_LIMIT);
+        // None of B's floor was granted to A.
+        let mut b_floor = vec![];
+        edge.blocks
+            .cover(payload_bounds(&snap.objects[1], 0.0), &mut b_floor);
+        let (owner, _, _) = edge.traffic_blocks();
+        assert!(b_floor.iter().all(|&i| owner[i] == Some(1)));
+        // A's robots get trees carrying the permit.
+        let id = layout.team_range(0).start;
+        assert_eq!(
+            edge.build_tree(id, 0.0).unwrap().permit,
+            edge.teams[0].permit
+        );
+        // Once B is out of the way, A gets a permit message going further.
+        snap.t = 1.0;
+        snap.objects[1].pos = V2::new(14.0, 20.0);
+        let before = edge.teams[0].permit;
+        edge.handle(Uplink::Camera(snap));
+        let out = edge.tick(1.0);
+        assert!(edge.teams[0].permit > before);
+        assert!(out
+            .iter()
+            .any(|d| matches!(d.body, DownBody::Permit { .. }) && (d.robot as usize) < 16));
     }
 
     #[test]

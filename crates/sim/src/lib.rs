@@ -89,6 +89,9 @@ impl Swarm {
                         });
                     }
                 }
+                DownBody::Permit { version, node } => {
+                    self.brains[i].receive_permit(version, node);
+                }
                 DownBody::Command {
                     force,
                     vel,

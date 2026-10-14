@@ -30,6 +30,8 @@ pub struct EdgeView {
     pub stats: EdgeStats,
     /// Learned surprise map: values, columns, cell size (m).
     pub heat: (Vec<f32>, usize, f32),
+    /// Traffic blocks: owner team of each, columns, block size (m).
+    pub blocks: (Vec<Option<usize>>, usize, f32),
 }
 
 impl EdgeView {
@@ -81,11 +83,19 @@ impl EdgeRuntime {
                                 let (h, nx, cell) = edge.heat_grid();
                                 v.heat = (h.to_vec(), nx, cell);
                                 v.zones = edge.zone_owners().to_vec();
+                                let (b, bnx, bcell) = edge.traffic_blocks();
+                                v.blocks = (b.to_vec(), bnx, bcell);
                                 let plans = edge.plans();
                                 let versions =
                                     |ps: &[Plan]| ps.iter().map(|p| p.version).collect::<Vec<_>>();
                                 if versions(&v.plans) != versions(&plans) {
                                     v.plans = plans;
+                                } else {
+                                    // Same plans; traffic state moves on.
+                                    for (old, new) in v.plans.iter_mut().zip(&plans) {
+                                        old.traffic_wait = new.traffic_wait;
+                                        old.granted = new.granted;
+                                    }
                                 }
                             }
                             if !out.is_empty() && out_tx.send(out).is_err() {
@@ -133,11 +143,13 @@ impl EdgeRuntime {
         match self {
             Self::Inline(e) => {
                 let (h, nx, cell) = e.heat_grid();
+                let (b, bnx, bcell) = e.traffic_blocks();
                 EdgeView {
                     plans: e.plans(),
                     zones: e.zone_owners().to_vec(),
                     stats: e.stats,
                     heat: (h.to_vec(), nx, cell),
+                    blocks: (b.to_vec(), bnx, bcell),
                 }
             }
             Self::Thread { view, .. } => view.lock().map(|v| v.clone()).unwrap_or_default(),
@@ -180,6 +192,8 @@ impl SessionConfig {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketKind {
     Tree,
+    /// Traffic permits (go as far as node N).
+    Permit,
     Command,
     State,
     Surprise,
@@ -334,6 +348,7 @@ impl Session {
                 let robot = d.robot;
                 let kind = match d.body {
                     DownBody::Tree(_) => PacketKind::Tree,
+                    DownBody::Permit { .. } => PacketKind::Permit,
                     DownBody::Command { .. } => PacketKind::Command,
                 };
                 let lost = !self.down.send(now, d, n);

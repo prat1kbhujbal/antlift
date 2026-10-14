@@ -115,8 +115,11 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
         let delivered = (0..n).filter(|&k| s.swarm.delivered(k)).count();
         c.line(
             &format!(
-                "delivered {delivered}/{n}   door waits {}   robots lent {}",
-                edge.stats.zone_waits, edge.stats.reassigned
+                "delivered {delivered}/{n}  door waits {}  traffic waits {}  reroutes {}  lent {}",
+                edge.stats.zone_waits,
+                edge.stats.traffic_waits,
+                edge.stats.reroutes,
+                edge.stats.reassigned
             ),
             18.0,
             TEXT,

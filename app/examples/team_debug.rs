@@ -1,6 +1,6 @@
 //! Follow one team in the warehouse: position, plan state and door owners.
 //!
-//!     cargo run --release --example team_debug -- [team] [seed] [seconds]
+//!     cargo run --release --example team_debug -- [team] [seed] [seconds] [centralized]
 use antlift_app::scenario::Level;
 use antlift_app::{EdgeRuntime, Session, SessionConfig};
 use antlift_core::ControlMode;
@@ -19,11 +19,15 @@ fn main() {
     let mut s = Session::new(SessionConfig {
         layout: layout.clone(),
         seed,
-        ..SessionConfig::new(ControlMode::Speculative)
+        ..SessionConfig::new(if a.get(4).map(String::as_str) == Some("centralized") {
+            ControlMode::Centralized
+        } else {
+            ControlMode::Speculative
+        })
     });
     let mut next = 0.0;
     let mut last_version = 0;
-    while s.t() < secs && !s.swarm.delivered(team) {
+    while s.t() < secs {
         s.step(1.0 / 60.0);
         if s.t() < next {
             continue;
@@ -83,6 +87,41 @@ fn main() {
                 })
             })
             .collect();
+        let held = (0..s.swarm.brains.len())
+            .filter(|&i| e.robot_team(i) == team && s.swarm.brains[i].held_by_traffic())
+            .count();
+        let permits: Vec<u8> = (0..s.swarm.brains.len())
+            .filter(|&i| e.robot_team(i) == team)
+            .map(|i| s.swarm.brains[i].permit())
+            .collect();
+        let remote: Vec<String> = e
+            .remote_brains()
+            .enumerate()
+            .filter(|(i, _)| e.robot_team(*i) == team)
+            .map(|(_, b)| {
+                let a = b.action().map_or("-".to_string(), |a| {
+                    format!("{a:?}")
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                });
+                format!(
+                    "{a}{}{}",
+                    if b.held_by_traffic() { "/held" } else { "" },
+                    b.permit()
+                )
+            })
+            .collect();
+        if s.control == ControlMode::Centralized {
+            println!("    edge brains {remote:?}");
+        }
+        println!(
+            "    traffic: granted {}/{} wait {:?} held {held} permits {permits:?}",
+            p.granted,
+            p.waypoints.len(),
+            p.traffic_wait
+        );
         println!(
             "    angle {:.2} first wp heading {:?} gripping {} actions {:?}",
             o.angle,

@@ -122,6 +122,9 @@ pub struct Downlink {
 pub enum DownBody {
     /// An encoded [`crate::ContingencyTree`] (speculative mode).
     Tree(Vec<u8>),
+    /// Traffic permit: robots of this plan `version` may advance up to tree
+    /// node `node` (255 = no limit). Sent whenever the limit changes.
+    Permit { version: u32, node: NodeId },
     /// What to do until the next command (centralized baseline): either a
     /// raw force or, when `vel` is set, a velocity setpoint the robot tracks
     /// with its own fast local loop.
@@ -137,6 +140,7 @@ impl Downlink {
     pub fn wire_len(&self) -> usize {
         2 + match &self.body {
             DownBody::Tree(t) => t.len(),
+            DownBody::Permit { .. } => 4 + 1,
             // One vector (force in 0.01 N or velocity in mm/s) as two i16,
             // plus a flags byte saying which, and grip/release.
             DownBody::Command { .. } => 4 + 1,
