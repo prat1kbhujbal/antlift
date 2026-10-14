@@ -160,6 +160,18 @@ impl Grid {
     }
 
     pub fn plan(&self, from: Pose, to: V2, fp: &Footprint) -> Option<Vec<Pose>> {
+        self.plan_with(from, to, fp, &|_| 0.0)
+    }
+
+    /// Like [`Self::plan`], with an extra cost multiplier per location
+    /// (e.g. learned trouble spots), added on top of the tightness cost.
+    pub fn plan_with(
+        &self,
+        from: Pose,
+        to: V2,
+        fp: &Footprint,
+        penalty: &dyn Fn(V2) -> f32,
+    ) -> Option<Vec<Pose>> {
         let start = self.cell_of(from.pos);
         let goal = self.cell_of(to);
         // Geometric distance only (any free cell), so a payload wedged in a
@@ -221,7 +233,8 @@ impl Grid {
                     return;
                 }
                 let j = idx(nx, ny, nh);
-                let ng = g[i] + base * (1.0 + 4.0 * (COMFY_SLACK - slack).max(0.0));
+                let tight = 4.0 * (COMFY_SLACK - slack).max(0.0);
+                let ng = g[i] + base * (1.0 + tight + penalty(pose.pos));
                 if ng < g[j] {
                     g[j] = ng;
                     parent[j] = i as u32;
@@ -236,8 +249,23 @@ impl Grid {
                 }
                 relax(nx as usize, ny as usize, h, step * CELL);
             }
-            relax(x, y, (h + 1) % HEADINGS, TURN_COST);
-            relax(x, y, (h + HEADINGS - 1) % HEADINGS, TURN_COST);
+            // Turning in place sweeps the space between headings: check the
+            // halfway angle too, so a long payload can't "teleport" round.
+            let step = std::f32::consts::PI / HEADINGS as f32;
+            for (nh, sign) in [
+                ((h + 1) % HEADINGS, 1.0),
+                ((h + HEADINGS - 1) % HEADINGS, -1.0),
+            ] {
+                let mid = Pose {
+                    pos: self.center(x, y),
+                    heading: Self::heading_of(h) + sign * step / 2.0,
+                };
+                let mid_slack = self.slack(mid, fp);
+                if mid_slack < 0.0 && mid_slack <= here + 1e-3 {
+                    continue;
+                }
+                relax(x, y, nh, TURN_COST);
+            }
         }
         None
     }
@@ -282,7 +310,7 @@ mod tests {
     fn setup() -> (Layout, Grid, Footprint) {
         let l = Layout::doorway();
         let g = Grid::new(l.arena, &l.walls);
-        let fp = Footprint::new(l.object_half + V2::new(SLOT_OFFSET, SLOT_OFFSET));
+        let fp = Footprint::new(l.payloads[0].half + V2::new(SLOT_OFFSET, SLOT_OFFSET));
         (l, g, fp)
     }
 
@@ -305,10 +333,10 @@ mod tests {
     fn plans_through_doorway_aligned() {
         let (l, g, fp) = setup();
         let start = Pose {
-            pos: l.object_start,
-            heading: l.object_start_angle,
+            pos: l.payloads[0].start,
+            heading: l.payloads[0].angle,
         };
-        let path = g.plan(start, l.goal, &fp).expect("path exists");
+        let path = g.plan(start, l.payloads[0].goal, &fp).expect("path exists");
         let crossing = path
             .windows(2)
             .find(|w| w[0].pos.x < 20.0 && w[1].pos.x >= 20.0)
@@ -330,10 +358,10 @@ mod tests {
             .push(Aabb::new(V2::new(19.0, 10.0), V2::new(21.0, 14.0)));
         let g = Grid::new(l.arena, &l.walls);
         let start = Pose {
-            pos: l.object_start,
-            heading: l.object_start_angle,
+            pos: l.payloads[0].start,
+            heading: l.payloads[0].angle,
         };
-        assert!(g.plan(start, l.goal, &fp).is_none());
+        assert!(g.plan(start, l.payloads[0].goal, &fp).is_none());
     }
 }
 
@@ -346,13 +374,13 @@ mod escape_tests {
     fn plans_out_of_a_wedged_start() {
         let l = Layout::doorway();
         let g = Grid::new(l.arena, &l.walls);
-        let fp = Footprint::new(l.object_half + V2::new(SLOT_OFFSET, SLOT_OFFSET) * 2.0);
+        let fp = Footprint::new(l.payloads[0].half + V2::new(SLOT_OFFSET, SLOT_OFFSET) * 2.0);
         // Diagonal against the doorway's lower wall, like a reflex shove leaves it.
         let start = Pose {
             pos: V2::new(17.45, 12.33),
             heading: 0.54,
         };
         assert!(g.slack(start, &fp) < 0.0, "test needs a colliding start");
-        assert!(g.plan(start, l.goal, &fp).is_some());
+        assert!(g.plan(start, l.payloads[0].goal, &fp).is_some());
     }
 }

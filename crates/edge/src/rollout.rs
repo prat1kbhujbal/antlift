@@ -73,13 +73,15 @@ pub struct Ghost {
     pub stall: Option<V2>,
 }
 
-/// Run one future for `horizon` seconds. `trees[i]` is robot i's encoded tree.
+/// Run one future for `horizon` seconds, watching payload `team`.
+/// `trees[i]` is robot i's encoded tree; every team runs its own.
 pub fn simulate(
     layout: &Layout,
     snap: &Snapshot,
     trees: &[Option<Vec<u8>>],
     what_if: WhatIf,
     horizon: f32,
+    team: usize,
 ) -> Ghost {
     let mut swarm = Swarm::from_snapshot(layout.clone(), snap, ControlMode::Speculative);
     for (b, t) in swarm.brains.iter_mut().zip(trees) {
@@ -90,20 +92,21 @@ pub fn simulate(
 
     let t0 = swarm.t;
     let mut poses = vec![];
-    let mut anchor = (snap.object.pos, snap.object.angle, t0);
+    let start = snap.objects[team];
+    let mut anchor = (start.pos, start.angle, t0);
     let mut disrupted = false;
     let mut stall = None;
     while swarm.t - t0 < horizon {
         if !disrupted && swarm.t - t0 >= DISRUPT_AT {
             disrupted = true;
-            disrupt(&mut swarm, what_if);
+            disrupt(&mut swarm, what_if, team);
         }
         swarm.step(DT, vec![]);
-        let o = swarm.world.object_state();
+        let o = swarm.world.object_state(team);
         if poses.len() as f32 * SAMPLE <= swarm.t - t0 {
             poses.push((o.pos, o.angle));
         }
-        if swarm.at_goal() {
+        if swarm.delivered(team) {
             break;
         }
         let moved = o.pos.dist(anchor.0) > STALL_DIST
@@ -122,9 +125,12 @@ pub fn simulate(
     }
 }
 
-fn disrupt(swarm: &mut Swarm, what_if: WhatIf) {
+fn disrupt(swarm: &mut Swarm, what_if: WhatIf, team: usize) {
+    let team_robots: Vec<usize> = (0..swarm.brains.len())
+        .filter(|&i| swarm.brains[i].team as usize == team)
+        .collect();
     let w = &mut swarm.world;
-    let o = w.object_state();
+    let o = w.object_state(team);
     let axis = V2::from_angle(o.angle);
     match what_if {
         WhatIf::Nominal => {}
@@ -133,14 +139,14 @@ fn disrupt(swarm: &mut Swarm, what_if: WhatIf) {
         }
         WhatIf::GripLoss => {
             let front = o.pos + axis * o.half.x;
-            for i in 0..w.robots.len() {
+            for &i in &team_robots {
                 if w.robot_pos(i).dist(front) < 2.5 {
                     w.release(i);
                 }
             }
         }
         WhatIf::RobotsDown => {
-            for i in (0..w.robots.len()).step_by(5) {
+            for &i in team_robots.iter().step_by(5) {
                 w.disable_robot(i);
             }
         }
@@ -154,11 +160,12 @@ pub fn simulate_all(
     snap: &Snapshot,
     trees: &[Option<Vec<u8>>],
     horizon: f32,
+    team: usize,
 ) -> Vec<Ghost> {
     thread::scope(|s| {
         let handles: Vec<_> = WHAT_IFS
             .iter()
-            .map(|&w| s.spawn(move || simulate(layout, snap, trees, w, horizon)))
+            .map(|&w| s.spawn(move || simulate(layout, snap, trees, w, horizon, team)))
             .collect();
         handles
             .into_iter()
