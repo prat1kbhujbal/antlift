@@ -1,16 +1,20 @@
-//! The arena: walls, plan, payload, robots, and the overlays that make the
-//! invisible parts visible (radio packets, learned surprise map, risks).
+//! The arena: walls, choke points, plans, payloads, robots, and the overlays
+//! that make the invisible parts visible (radio packets, learned surprise
+//! map, risks, ghost futures).
 
 use super::theme::*;
 use super::{draw_box, draw_box_lines, Overlays, Pane, View, FLASH_SECS};
 use antlift_app::{EdgeView, PacketKind};
-use antlift_core::{ControlMode, Role, ROBOT_RADIUS, V2};
+use antlift_core::{ControlMode, Layout, Role, ROBOT_RADIUS, V2};
 use antlift_edge::Contingency;
 use antlift_sim::{Event, Mode};
 use macroquad::prelude::*;
 
-/// Where the edge server's access point is drawn (ceiling-mounted over the wall).
-pub const EDGE_POS: V2 = V2::new(20.0, 22.6);
+/// Where the edge server's access point is drawn: ceiling-mounted, top centre.
+pub fn edge_pos(layout: &Layout) -> V2 {
+    let a = &layout.arena;
+    V2::new((a.min.x + a.max.x) / 2.0, a.max.y - 1.4)
+}
 /// Packets are animated over at least this long so they can be seen.
 const MIN_FLIGHT: f32 = 0.4;
 
@@ -27,11 +31,24 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
         draw_box(v, w.center(), 0.0, w.half(), WALL);
     }
 
-    let g = v.px(layout.goal);
-    draw_circle_lines(g.x, g.y, v.len(1.0), 2.0, HIT);
-    draw_text("GOAL", g.x - 16.0, g.y + 5.0, 16.0, HIT);
+    draw_zones(v, layout, edge);
 
-    if let Some(plan) = &edge.plan {
+    for (k, spec) in layout.payloads.iter().enumerate() {
+        let g = v.px(spec.goal);
+        let done = s.swarm.delivered(k);
+        draw_circle_lines(g.x, g.y, v.len(1.0), 2.0, HIT);
+        if done {
+            draw_circle(g.x, g.y, v.len(1.0), alpha(HIT, 0.15));
+        }
+        let label = if layout.payloads.len() > 1 {
+            format!("{} goal", spec.name)
+        } else {
+            "GOAL".to_string()
+        };
+        draw_text(&label, g.x - 16.0, g.y + v.len(1.0) + 14.0, 15.0, HIT);
+    }
+
+    for plan in &edge.plans {
         for w in plan.path.windows(2) {
             let (a, b) = (v.px(w[0]), v.px(w[1]));
             draw_line(a.x, a.y, b.x, b.y, 3.0, PATH);
@@ -44,24 +61,32 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
             draw_line(a.x, a.y, b.x, b.y, 2.0, c);
             draw_circle(p.x, p.y, 3.0, c);
         }
-        if ov.risks {
-            draw_risks(v, edge);
+        if let (Some(_), Some(w)) = (plan.waiting_for, plan.waypoints.last()) {
+            let p = v.px(w.pos);
+            draw_text("WAIT", p.x - 14.0, p.y - 10.0, 15.0, RISK);
         }
     }
-
+    if ov.risks {
+        draw_risks(v, edge);
+    }
     if ov.ghosts {
-        draw_ghosts(v, edge, s.swarm.world.object_half);
+        draw_ghosts(v, edge, layout);
     }
 
     for (c, angle, half) in s.swarm.world.crate_boxes() {
         draw_box(v, c, angle, half, CRATE);
     }
 
-    let o = s.swarm.world.object_state();
-    draw_box(v, o.pos, o.angle, o.half, PAYLOAD);
-    let nose = v.px(o.pos + V2::from_angle(o.angle) * o.half.x);
-    let mid = v.px(o.pos);
-    draw_line(mid.x, mid.y, nose.x, nose.y, 2.0, BG);
+    for (k, spec) in layout.payloads.iter().enumerate() {
+        let o = s.swarm.world.object_state(k);
+        draw_box(v, o.pos, o.angle, o.half, PAYLOAD);
+        let nose = v.px(o.pos + V2::from_angle(o.angle) * o.half.x);
+        let mid = v.px(o.pos);
+        draw_line(mid.x, mid.y, nose.x, nose.y, 2.0, BG);
+        if layout.payloads.len() > 1 {
+            draw_text(spec.name, mid.x - 5.0, mid.y + 6.0, 18.0, BG);
+        }
+    }
 
     let r = v.len(ROBOT_RADIUS);
     for (i, b) in s.swarm.brains.iter().enumerate() {
@@ -92,14 +117,41 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
         }
     }
 
-    draw_edge_box(v, s.edge_up());
+    draw_edge_box(v, edge_pos(layout), s.edge_up());
     if ov.packets {
         draw_packets(pane, v, now);
     }
 }
 
-fn draw_edge_box(v: &View, up: bool) {
-    let p = v.px(EDGE_POS);
+/// Choke points: free ones faint, reserved ones amber with their owner.
+fn draw_zones(v: &View, layout: &Layout, edge: &EdgeView) {
+    for (z, a) in layout.chokepoints.iter().enumerate() {
+        let owner = edge.zones.get(z).copied().flatten();
+        let tl = v.px(V2::new(a.min.x, a.max.y));
+        let (w, h) = (v.len(a.max.x - a.min.x), v.len(a.max.y - a.min.y));
+        let c = if owner.is_some() { RISK } else { FAINT };
+        draw_rectangle(tl.x, tl.y, w, h, alpha(c, 0.08));
+        super::dashed_line(tl, tl + vec2(w, 0.0), 1.5, alpha(c, 0.7));
+        super::dashed_line(tl + vec2(0.0, h), tl + vec2(w, h), 1.5, alpha(c, 0.7));
+        let waiting: Vec<&str> = edge
+            .plans
+            .iter()
+            .filter(|p| p.waiting_for == Some(z))
+            .map(|p| layout.payloads[p.team].name)
+            .collect();
+        let mut label = match owner {
+            Some(k) => format!("held by {}", layout.payloads[k].name),
+            None => "free".to_string(),
+        };
+        if !waiting.is_empty() {
+            label.push_str(&format!(" · {} waits", waiting.join(",")));
+        }
+        draw_text(&label, tl.x + 2.0, tl.y - 4.0, 14.0, alpha(c, 0.9));
+    }
+}
+
+fn draw_edge_box(v: &View, at: V2, up: bool) {
+    let p = v.px(at);
     let c = if up { HIT } else { MISS };
     draw_rectangle(p.x - 16.0, p.y - 9.0, 32.0, 18.0, PANEL);
     draw_rectangle_lines(p.x - 16.0, p.y - 9.0, 32.0, 18.0, 2.0, c);
@@ -117,14 +169,15 @@ fn draw_edge_box(v: &View, up: bool) {
 /// a lost one dies halfway with a red cross.
 fn draw_packets(pane: &Pane, v: &View, now: f32) {
     let s = &pane.session;
+    let edge = edge_pos(&s.swarm.layout);
     let flight = (s.up.config.latency + s.up.config.jitter * 0.5).max(MIN_FLIGHT);
     for x in &s.tx {
         let age = now - x.t;
         let robot = s.swarm.world.robot_pos(x.robot as usize);
         let (from, to) = if x.uplink {
-            (robot, EDGE_POS)
+            (robot, edge)
         } else {
-            (EDGE_POS, robot)
+            (edge, robot)
         };
         if x.lost {
             let k = (age / flight).min(0.5);
@@ -185,7 +238,12 @@ fn draw_heat(v: &View, edge: &EdgeView) {
 
 /// The edge's top predicted risks along the route, as small badges.
 fn draw_risks(v: &View, edge: &EdgeView) {
-    let Some(plan) = &edge.plan else { return };
+    for plan in &edge.plans {
+        draw_plan_risks(v, plan);
+    }
+}
+
+fn draw_plan_risks(v: &View, plan: &antlift_edge::Plan) {
     let mut best: Vec<Option<(Contingency, f32)>> = vec![None; plan.waypoints.len()];
     for c in &plan.candidates {
         let score = c.p;
@@ -216,8 +274,13 @@ fn draw_risks(v: &View, edge: &EdgeView) {
 
 /// The futures the edge simulated at its last plan: faint payload outlines
 /// along each one, red with a cross where that future jammed.
-fn draw_ghosts(v: &View, edge: &EdgeView, half: V2) {
-    let Some(plan) = &edge.plan else { return };
+fn draw_ghosts(v: &View, edge: &EdgeView, layout: &Layout) {
+    for plan in &edge.plans {
+        draw_plan_ghosts(v, plan, layout.payloads[plan.team].half);
+    }
+}
+
+fn draw_plan_ghosts(v: &View, plan: &antlift_edge::Plan, half: V2) {
     let mut labelled: Vec<V2> = vec![];
     for g in &plan.ghosts {
         let color = if g.stall.is_some() { MISS } else { GHOST };

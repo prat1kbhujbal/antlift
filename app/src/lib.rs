@@ -23,10 +23,20 @@ fn camera_period(control: ControlMode) -> f32 {
 /// What the UI may read about the edge without touching its internals.
 #[derive(Clone, Default)]
 pub struct EdgeView {
-    pub plan: Option<Plan>,
+    /// Every team's current plan.
+    pub plans: Vec<Plan>,
+    /// Owner team of each choke point.
+    pub zones: Vec<Option<usize>>,
     pub stats: EdgeStats,
     /// Learned surprise map: values, columns, cell size (m).
     pub heat: (Vec<f32>, usize, f32),
+}
+
+impl EdgeView {
+    /// The first team's plan (the only one on single-payload levels).
+    pub fn plan(&self) -> Option<&Plan> {
+        self.plans.first()
+    }
 }
 
 pub enum EdgeIn {
@@ -70,10 +80,12 @@ impl EdgeRuntime {
                                 v.stats = edge.stats;
                                 let (h, nx, cell) = edge.heat_grid();
                                 v.heat = (h.to_vec(), nx, cell);
-                                if v.plan.as_ref().map(|p| p.version)
-                                    != edge.plan().map(|p| p.version)
-                                {
-                                    v.plan = edge.plan().cloned();
+                                v.zones = edge.zone_owners().to_vec();
+                                let plans = edge.plans();
+                                let versions =
+                                    |ps: &[Plan]| ps.iter().map(|p| p.version).collect::<Vec<_>>();
+                                if versions(&v.plans) != versions(&plans) {
+                                    v.plans = plans;
                                 }
                             }
                             if !out.is_empty() && out_tx.send(out).is_err() {
@@ -122,7 +134,8 @@ impl EdgeRuntime {
             Self::Inline(e) => {
                 let (h, nx, cell) = e.heat_grid();
                 EdgeView {
-                    plan: e.plan().cloned(),
+                    plans: e.plans(),
+                    zones: e.zone_owners().to_vec(),
                     stats: e.stats,
                     heat: (h.to_vec(), nx, cell),
                 }
@@ -200,7 +213,7 @@ pub struct Sample {
     pub t: f32,
     /// Cumulative robot radio traffic per robot (KB).
     pub kb_per_robot: f32,
-    /// Payload distance to the goal (m).
+    /// Total distance left over every payload (m).
     pub dist: f32,
 }
 
@@ -344,14 +357,17 @@ impl Session {
             self.history.push(Sample {
                 t: now,
                 kb_per_robot: (self.radio.up_bytes + self.radio.down_bytes) as f32 / n / 1024.0,
-                dist: self
-                    .swarm
-                    .world
-                    .object_state()
-                    .pos
-                    .dist(self.swarm.layout.goal),
+                dist: self.distance_left(),
             });
         }
+    }
+
+    /// Total distance between payloads and their goals (m).
+    pub fn distance_left(&self) -> f32 {
+        let s = &self.swarm;
+        (0..s.layout.payloads.len())
+            .map(|k| s.world.object_state(k).pos.dist(s.layout.payloads[k].goal))
+            .sum()
     }
 
     /// Robot radio bytes per robot per second, both directions.

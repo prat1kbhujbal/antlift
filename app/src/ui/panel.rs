@@ -97,18 +97,30 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
         18.0,
         TEXT,
     );
-    if let Some(plan) = &edge.plan {
-        let jammed = plan.ghosts.iter().filter(|g| g.stall.is_some()).count();
-        if !plan.ghosts.is_empty() {
-            c.line(
-                &format!(
-                    "ghost futures: {} simulated, {jammed} jammed",
-                    plan.ghosts.len()
-                ),
-                18.0,
-                if jammed > 0 { MISS } else { GHOST },
-            );
-        }
+    let futures: usize = edge.plans.iter().map(|p| p.ghosts.len()).sum();
+    let jammed: usize = edge
+        .plans
+        .iter()
+        .map(|p| p.ghosts.iter().filter(|g| g.stall.is_some()).count())
+        .sum();
+    if futures > 0 {
+        c.line(
+            &format!("ghost futures: {futures} simulated, {jammed} jammed"),
+            18.0,
+            if jammed > 0 { MISS } else { GHOST },
+        );
+    }
+    let n = s.swarm.layout.payloads.len();
+    if n > 1 {
+        let delivered = (0..n).filter(|&k| s.swarm.delivered(k)).count();
+        c.line(
+            &format!(
+                "delivered {delivered}/{n}   door waits {}   robots lent {}",
+                edge.stats.zone_waits, edge.stats.reassigned
+            ),
+            18.0,
+            TEXT,
+        );
     }
     if s.control == ControlMode::Speculative {
         let (mut on_tree, mut reflex, mut dead) = (0, 0, 0);
@@ -259,10 +271,7 @@ pub fn compare(rect: Rect, panes: &[Pane], edges: &[EdgeView], ui: &Ui) {
         ),
         (
             "distance left",
-            Box::new(|p, _| {
-                let o = p.session.swarm.world.object_state();
-                format!("{:.1} m", o.pos.dist(p.session.swarm.layout.goal))
-            }),
+            Box::new(|p, _| format!("{:.1} m", p.session.distance_left())),
         ),
         (
             "radio / robot",

@@ -20,7 +20,7 @@ fn speculative_swarm_delivers_through_doorway() {
     assert!(
         reached.is_some(),
         "payload stuck at {:?}",
-        s.swarm.world.object_state().pos
+        s.swarm.world.object_state(0).pos
     );
     assert!(
         s.swarm.stats.hits > 0,
@@ -33,7 +33,7 @@ fn reflexes_alone_do_not_get_through() {
     let (s, reached) = run(ControlMode::Speculative, false, 150.0);
     assert!(reached.is_none());
     assert!(
-        s.swarm.world.object_state().pos.x < 20.0,
+        s.swarm.world.object_state(0).pos.x < 20.0,
         "should be stuck in the first room"
     );
 }
@@ -44,7 +44,7 @@ fn centralized_baseline_also_delivers_on_a_clean_link() {
     assert!(
         reached.is_some(),
         "payload stuck at {:?}",
-        s.swarm.world.object_state().pos
+        s.swarm.world.object_state(0).pos
     );
     assert!(s.swarm.stats.commands_received > 0);
     assert_eq!(
@@ -71,7 +71,7 @@ fn switching_modes_mid_run_still_delivers() {
     assert!(
         reached,
         "payload stuck at {:?}",
-        s.swarm.world.object_state().pos
+        s.swarm.world.object_state(0).pos
     );
     assert!(
         s.swarm.stats.commands_received > 0,

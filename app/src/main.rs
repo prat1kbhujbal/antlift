@@ -1,10 +1,11 @@
 //! Interactive AntLift demo. Each edge server runs on its own thread and only
 //! talks to its swarm through the simulated radio.
 //!
-//!     cargo run --release [-- --compare] [-- --select <robot>]
+//!     cargo run --release [-- --warehouse] [-- --compare] [-- --select <robot>]
 
 mod ui;
 
+use antlift_app::scenario::Level;
 use antlift_app::{Session, SessionConfig};
 use antlift_core::ControlMode;
 use antlift_net::LinkConfig;
@@ -23,7 +24,8 @@ const HELP: &[&str] = &[
     "E edge on/off · [ ] latency · L packet loss",
     "C switch mode live · V side-by-side compare",
     "T ghost futures · P packets · H heat map · K risks",
-    "F fast-forward · Space pause · R reset · Esc",
+    "W doorway/warehouse level · F fast-forward",
+    "Space pause · R reset · Esc deselect",
 ];
 
 fn window_conf() -> Conf {
@@ -37,6 +39,7 @@ fn window_conf() -> Conf {
 }
 
 struct App {
+    level: Level,
     panes: Vec<Pane>,
     link: LinkConfig,
     loss_idx: usize,
@@ -46,8 +49,9 @@ struct App {
     overlays: Overlays,
 }
 
-fn session(control: ControlMode, link: LinkConfig) -> Session {
+fn session(control: ControlMode, link: LinkConfig, level: Level) -> Session {
     Session::new(SessionConfig {
+        layout: level.base(),
         threaded: true,
         link,
         ..SessionConfig::new(control)
@@ -55,10 +59,11 @@ fn session(control: ControlMode, link: LinkConfig) -> Session {
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(level: Level) -> Self {
         let link = LinkConfig::default();
         Self {
-            panes: vec![Pane::new(session(ControlMode::Speculative, link))],
+            level,
+            panes: vec![Pane::new(session(ControlMode::Speculative, link, level))],
             link,
             loss_idx: 0,
             paused: false,
@@ -81,12 +86,12 @@ impl App {
     fn reset(&mut self) {
         self.panes = if self.comparing() {
             vec![
-                Pane::new(session(ControlMode::Speculative, self.link)),
-                Pane::new(session(ControlMode::Centralized, self.link)),
+                Pane::new(session(ControlMode::Speculative, self.link, self.level)),
+                Pane::new(session(ControlMode::Centralized, self.link, self.level)),
             ]
         } else {
             let control = self.panes[0].session.control;
-            vec![Pane::new(session(control, self.link))]
+            vec![Pane::new(session(control, self.link, self.level))]
         };
     }
 
@@ -138,7 +143,8 @@ fn handle_input(app: &mut App, views: &[View]) {
         }
         if is_mouse_button_pressed(MouseButton::Right) {
             for p in &mut app.panes {
-                let o = p.session.swarm.world.object_state();
+                let w = &p.session.swarm.world;
+                let o = w.object_state(w.nearest_object(m));
                 p.session.swarm.world.kick(m, (o.pos - m).norm() * 80.0);
             }
         }
@@ -203,15 +209,27 @@ fn handle_input(app: &mut App, views: &[View]) {
     if is_key_pressed(KeyCode::V) {
         // Comparing always starts both runs fresh so they're on equal terms.
         app.panes = if app.comparing() {
-            vec![Pane::new(session(ControlMode::Speculative, app.link))]
+            vec![Pane::new(session(
+                ControlMode::Speculative,
+                app.link,
+                app.level,
+            ))]
         } else {
             vec![
-                Pane::new(session(ControlMode::Speculative, app.link)),
-                Pane::new(session(ControlMode::Centralized, app.link)),
+                Pane::new(session(ControlMode::Speculative, app.link, app.level)),
+                Pane::new(session(ControlMode::Centralized, app.link, app.level)),
             ]
         };
     }
     if is_key_pressed(KeyCode::R) {
+        app.reset();
+    }
+    if is_key_pressed(KeyCode::W) {
+        app.level = match app.level {
+            Level::Doorway => Level::Warehouse,
+            Level::Warehouse => Level::Doorway,
+        };
+        app.selected = None;
         app.reset();
     }
     if is_key_pressed(KeyCode::T) {
@@ -239,12 +257,20 @@ fn handle_input(app: &mut App, views: &[View]) {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut app = App::new();
     // Optional flags, handy for demos and screenshots.
     let args: Vec<String> = std::env::args().collect();
+    let level = if args.iter().any(|a| a == "--warehouse") {
+        Level::Warehouse
+    } else {
+        Level::Doorway
+    };
+    let mut app = App::new(level);
     if args.iter().any(|a| a == "--compare") {
-        app.panes
-            .push(Pane::new(session(ControlMode::Centralized, app.link)));
+        app.panes.push(Pane::new(session(
+            ControlMode::Centralized,
+            app.link,
+            app.level,
+        )));
     }
     app.selected = args
         .iter()

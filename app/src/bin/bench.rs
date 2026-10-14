@@ -1,13 +1,15 @@
 //! Headless benchmark: every condition x control mode x seed, in parallel,
 //! plus latency and outage sweeps.
 //!
-//!     cargo run --release --bin bench -- [--seeds 10] [--limit 240] [--out results]
+//!     cargo run --release --bin bench -- [--seeds 10] [--limit <s>] [--out results]
 //!
-//! Writes `<out>/bench.csv` and `<out>/summary.md` (condition matrix) and
-//! `<out>/sweeps.csv` (latency and outage sweeps).
+//! Writes `<out>/bench.csv` and `<out>/summary.md` (doorway condition
+//! matrix), `<out>/sweeps.csv` (latency and outage sweeps) and
+//! `<out>/warehouse.csv` (three teams sharing the warehouse).
 
 use antlift_app::scenario::{
-    conditions, latency_sweep, mean_ci, outage_sweep, run, Condition, RunResult, Variant, VARIANTS,
+    conditions, latency_sweep, mean_ci, outage_sweep, run, warehouse_conditions, Condition,
+    RunResult, Variant, VARIANTS,
 };
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,7 +26,8 @@ fn arg<T: std::str::FromStr>(name: &str, default: T) -> T {
 }
 
 /// Run every condition x mode x seed on all cores. Results come back in job order.
-fn run_all(conds: &[Condition], seeds: u64, limit: f32) -> Vec<RunResult> {
+/// `limit` overrides each level's own time limit.
+fn run_all(conds: &[Condition], seeds: u64, limit: Option<f32>) -> Vec<RunResult> {
     let jobs: Vec<(usize, Variant, u64)> = (0..conds.len())
         .flat_map(|c| {
             VARIANTS
@@ -43,7 +46,8 @@ fn run_all(conds: &[Condition], seeds: u64, limit: f32) -> Vec<RunResult> {
                 let Some(&(c, m, seed)) = jobs.get(k) else {
                     break;
                 };
-                let r = run(&conds[c], m, seed, limit);
+                let lim = limit.unwrap_or(conds[c].level.limit());
+                let r = run(&conds[c], m, seed, lim);
                 results.lock().unwrap().push((k, r));
             });
         }
@@ -59,7 +63,8 @@ fn fmt_ci(v: Option<(f32, f32)>) -> String {
 
 fn main() {
     let seeds: u64 = arg("--seeds", 10);
-    let limit: f32 = arg("--limit", 240.0);
+    // Each level has its own time limit unless --limit overrides it.
+    let limit: Option<f32> = Some(arg("--limit", 0.0f32)).filter(|v| *v > 0.0);
     let out_dir: String = arg("--out", "results".to_string());
     fs::create_dir_all(&out_dir).expect("create output dir");
 
@@ -120,7 +125,7 @@ fn main() {
     }
     let _ = writeln!(
         md,
-        "\n{seeds} seeds per cell (randomized start pose and radio RNG), {limit:.0} s limit. Time is over successful runs; ± is a 95% CI."
+        "\n{seeds} seeds per cell (randomized start pose and radio RNG), 240 s limit. Time is over successful runs; ± is a 95% CI."
     );
 
     // Sweeps.
@@ -175,8 +180,69 @@ fn main() {
         }
     }
 
+    // Warehouse: three teams, shared doors.
+    let wh = warehouse_conditions();
+    let results = run_all(&wh, seeds, limit);
+    let mut wcsv = String::from(
+        "condition,control,seed,reached,time_s,delivered,final_dist_m,hits,misses,plans,zone_waits,reassigned,bytes_per_robot_s\n",
+    );
+    for r in &results {
+        let _ = writeln!(
+            wcsv,
+            "{},{},{},{},{},{},{:.2},{},{},{},{},{},{:.1}",
+            r.condition,
+            r.variant.name,
+            r.seed,
+            r.reached.is_some(),
+            r.reached.map_or(String::new(), |t| format!("{t:.2}")),
+            r.deliveries.iter().filter(|d| d.is_some()).count(),
+            r.final_dist,
+            r.hits,
+            r.misses,
+            r.plans,
+            r.zone_waits,
+            r.reassigned,
+            r.bytes_per_robot_s
+        );
+    }
+    fs::write(format!("{out_dir}/warehouse.csv"), wcsv).expect("write warehouse csv");
+    let _ = writeln!(
+        md,
+        "\n### Warehouse (3 payloads, 44 robots, shared doors)\n\n| Condition | Control | All delivered | Time (s) | Payloads delivered | Radio (B/robot/s) | Door waits | Robots lent | Surprises |\n|---|---|---|---|---|---|---|---|---|"
+    );
+    for c in &wh {
+        for m in VARIANTS {
+            let rows: Vec<&RunResult> = results
+                .iter()
+                .filter(|r| r.condition == c.name && r.variant == m)
+                .collect();
+            let times: Vec<f32> = rows.iter().filter_map(|r| r.reached).collect();
+            let n = rows.len().max(1) as f32;
+            let avg = |f: &dyn Fn(&RunResult) -> f32| rows.iter().map(|r| f(r)).sum::<f32>() / n;
+            let _ = writeln!(
+                md,
+                "| {} | {} | {}/{} | {} | {:.2} / {} | {:.0} | {:.1} | {:.1} | {:.1} |",
+                c.name,
+                m.name,
+                times.len(),
+                rows.len(),
+                fmt_ci(mean_ci(&times)),
+                avg(&|r| r.deliveries.iter().filter(|d| d.is_some()).count() as f32),
+                rows.first().map_or(0, |r| r.deliveries.len()),
+                avg(&|r| r.bytes_per_robot_s),
+                avg(&|r| r.zone_waits as f32),
+                avg(&|r| r.reassigned as f32),
+                avg(&|r| r.misses as f32),
+            );
+        }
+    }
+    let _ = writeln!(
+        md,
+        "\n{seeds} seeds per cell, 420 s limit. Time is until every payload is at its goal, over runs where that happened."
+    );
+
     fs::write(format!("{out_dir}/summary.md"), &md).expect("write summary");
     fs::write(format!("{out_dir}/sweeps.csv"), sweep_csv).expect("write sweeps");
     println!("{md}");
-    eprintln!("wrote {out_dir}/bench.csv, summary.md, sweeps.csv");
+    eprintln!("wrote {out_dir}/bench.csv, summary.md, sweeps.csv, warehouse.csv");
 }

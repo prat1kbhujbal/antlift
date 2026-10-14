@@ -3,7 +3,7 @@
 //!     cargo run --release --example trace -- [--cond clean] [--mode speculative|central]
 //!                                            [--seed 1] [--limit 240] [--every 5]
 
-use antlift_app::scenario::{conditions, latency_sweep, layout_for, outage_sweep, DT};
+use antlift_app::scenario::{conditions, latency_sweep, outage_sweep, warehouse_conditions, DT};
 use antlift_app::{Session, SessionConfig};
 use antlift_core::{Action, ControlMode};
 use std::collections::BTreeMap;
@@ -29,11 +29,12 @@ fn main() {
         .into_iter()
         .chain(latency_sweep().into_iter().map(|(_, c)| c))
         .chain(outage_sweep().into_iter().map(|(_, c)| c))
+        .chain(warehouse_conditions())
         .find(|c| c.name == cond_name)
         .unwrap_or_else(|| panic!("unknown condition {cond_name}"));
 
     let mut s = Session::new(SessionConfig {
-        layout: layout_for(seed),
+        layout: cond.level.layout(seed),
         link: cond.link,
         seed,
         ..SessionConfig::new(control)
@@ -50,14 +51,6 @@ fn main() {
             continue;
         }
         next += every;
-        let o = s.swarm.world.object_state();
-        let gripping = s
-            .swarm
-            .world
-            .robots
-            .iter()
-            .filter(|r| r.grip.is_some())
-            .count();
         let mut actions: BTreeMap<&str, usize> = BTreeMap::new();
         for b in &s.swarm.brains {
             let name = match (control, b.action()) {
@@ -71,10 +64,33 @@ fn main() {
             *actions.entry(name).or_default() += 1;
         }
         let v = s.edge.view();
+        let layout = &s.swarm.layout;
+        let payloads: Vec<String> = (0..layout.payloads.len())
+            .map(|k| {
+                let o = s.swarm.world.object_state(k);
+                let mark = if s.swarm.delivered(k) { "*" } else { "" };
+                format!(
+                    "{}{mark}({:.1},{:.1})",
+                    layout.payloads[k].name, o.pos.x, o.pos.y
+                )
+            })
+            .collect();
+        let zones: Vec<String> = v
+            .zones
+            .iter()
+            .map(|z| z.map_or("-".into(), |k| layout.payloads[k].name.to_string()))
+            .collect();
         println!(
-            "t={:5.1}  payload=({:5.2},{:5.2}) {:5.2} rad  v={:4.2}  gripping={:2}  hits={} surprises={} plans={}  {:?}",
-            s.t(), o.pos.x, o.pos.y, o.angle, o.vel.len(), gripping,
-            s.hits(), s.misses(), v.stats.plans, actions
+            "t={:5.1}  {}  doors[{}]  hits={} surprises={} plans={} waits={} lent={}  {:?}",
+            s.t(),
+            payloads.join(" "),
+            zones.join(""),
+            s.hits(),
+            s.misses(),
+            v.stats.plans,
+            v.stats.zone_waits,
+            v.stats.reassigned,
+            actions
         );
     }
     println!("stopped at t={:.1}, at goal: {}", s.t(), s.swarm.at_goal());
