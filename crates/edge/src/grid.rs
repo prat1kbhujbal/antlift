@@ -6,7 +6,7 @@
 //! gripping its sides) is checked as a chain of circles against an exact
 //! clearance map. A 2D distance-to-goal field is the A* heuristic.
 
-use antlift_core::{wrap_angle, Aabb, V2};
+use antlift_core::{axis_error, wrap_angle, Aabb, V2};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f32::consts::{PI, SQRT_2};
@@ -115,6 +115,73 @@ impl Grid {
             .iter()
             .map(|&o| self.clearance_at(pose.pos + axis * o) - fp.radius)
             .fold(f32::INFINITY, f32::min)
+    }
+
+    /// Smooth a grid path: replace runs of cells with straight segments,
+    /// turning gradually along each one instead of stopping to rotate. A
+    /// shortcut keeps as much slack as the stretch it replaces had (capped at
+    /// [`SMOOTH_MARGIN`]), and stretches tighter than [`SMOOTH_TIGHT`]
+    /// (doorways, a wedged start) are never shortcut: there the search's own
+    /// centred, aligned cell-by-cell path is kept. The result is resampled
+    /// every [`SMOOTH_STEP`] metres.
+    pub fn smooth(&self, poses: &[Pose], fp: &Footprint) -> Vec<Pose> {
+        if poses.len() < 3 {
+            return poses.to_vec();
+        }
+        let slack: Vec<f32> = poses.iter().map(|p| self.slack(*p, fp)).collect();
+        let last = poses.len() - 1;
+        let mut keep = vec![0];
+        let mut i = 0;
+        while i < last {
+            let ok = |j: usize| {
+                let floor = slack[i..=j].iter().fold(SMOOTH_MARGIN, |m, &s| m.min(s));
+                floor >= SMOOTH_TIGHT && self.segment_clear(poses[i], poses[j], fp, floor)
+            };
+            // Gallop forward from the next cell (always fine), then binary
+            // search the furthest reachable pose.
+            let (mut good, mut step) = (i + 1, 1);
+            let mut bad = None;
+            while good < last {
+                let next = (good + step).min(last);
+                if ok(next) {
+                    good = next;
+                    step *= 2;
+                } else {
+                    bad = Some(next);
+                    break;
+                }
+            }
+            if let Some(mut bad) = bad {
+                while bad - good > 1 {
+                    let mid = (good + bad) / 2;
+                    if ok(mid) {
+                        good = mid;
+                    } else {
+                        bad = mid;
+                    }
+                }
+            }
+            keep.push(good);
+            i = good;
+        }
+
+        let mut out = vec![];
+        for w in keep.windows(2) {
+            let (a, b) = (poses[w[0]], poses[w[1]]);
+            let n = (a.pos.dist(b.pos) / SMOOTH_STEP).ceil().max(1.0) as usize;
+            for k in 0..n {
+                out.push(lerp_pose(a, b, k as f32 / n as f32));
+            }
+        }
+        out.push(poses[last]);
+        out
+    }
+
+    /// The footprint keeps at least `floor` slack all along a to b.
+    fn segment_clear(&self, a: Pose, b: Pose, fp: &Footprint, floor: f32) -> bool {
+        let turn = axis_error(b.heading, a.heading).abs();
+        let n = (a.pos.dist(b.pos) / 0.1).max(turn / 0.05).ceil().max(1.0) as usize;
+        (1..n).all(|k| self.slack(lerp_pose(a, b, k as f32 / n as f32), fp) >= floor - 1e-3)
     }
 
     pub fn heading_of(h: usize) -> f32 {
@@ -282,6 +349,24 @@ const MOVES: [(isize, isize, f32); 8] = [
     (-1, -1, SQRT_2),
 ];
 
+/// Shortcuts keep the slack of the stretch they replace, up to this much:
+/// the same comfort margin the search aims for, so they never pull routes
+/// tight against walls and door frames.
+pub const SMOOTH_MARGIN: f32 = COMFY_SLACK;
+/// Stretches with less slack than this are never shortcut.
+pub const SMOOTH_TIGHT: f32 = 0.3;
+/// Smoothed paths are resampled this often (m).
+pub const SMOOTH_STEP: f32 = 0.25;
+
+/// Straight-line blend between two poses; the heading takes the shorter
+/// way round the payload's symmetric axis.
+fn lerp_pose(a: Pose, b: Pose, t: f32) -> Pose {
+    Pose {
+        pos: a.pos + (b.pos - a.pos) * t,
+        heading: a.heading + axis_error(b.heading, a.heading) * t,
+    }
+}
+
 /// Min-heap entry.
 struct Open(f32, usize);
 
@@ -349,6 +434,41 @@ mod tests {
         for p in &path[1..] {
             assert!(g.slack(*p, &fp) >= 0.0);
         }
+    }
+
+    #[test]
+    fn smoothing_straightens_and_stays_clear() {
+        let (l, g, fp) = setup();
+        let start = Pose {
+            pos: l.payloads[0].start,
+            heading: l.payloads[0].angle,
+        };
+        let raw = g.plan(start, l.payloads[0].goal, &fp).unwrap();
+        let smooth = g.smooth(&raw, &fp);
+        let length = |p: &[Pose]| p.windows(2).map(|w| w[0].pos.dist(w[1].pos)).sum::<f32>();
+        let bends = |p: &[Pose]| {
+            p.windows(3)
+                .filter(|w| {
+                    let (a, b) = ((w[1].pos - w[0].pos).angle(), (w[2].pos - w[1].pos).angle());
+                    wrap_angle(a - b).abs() > 0.1
+                })
+                .count()
+        };
+        assert!(length(&smooth) <= length(&raw) + 1e-3);
+        // Fewer bends (tight stretches keep their grid steps on purpose).
+        assert!(
+            bends(&smooth) < bends(&raw),
+            "{} vs {}",
+            bends(&smooth),
+            bends(&raw)
+        );
+        // Every smoothed pose either lies on the original grid path (tight
+        // spots are left alone) or keeps at least the tight threshold.
+        for p in &smooth[1..] {
+            let on_grid = raw.iter().any(|r| r.pos.dist(p.pos) < 0.01);
+            assert!(on_grid || g.slack(*p, &fp) >= SMOOTH_TIGHT - 0.01, "{p:?}");
+        }
+        assert_eq!(smooth.last().unwrap().pos, raw.last().unwrap().pos);
     }
 
     #[test]

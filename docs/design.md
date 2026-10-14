@@ -181,6 +181,20 @@ What it shows:
 3. **Centralized is the most reliable here (50/50, against 47/50 and 48/50).** All five speculative failures are the same: a payload wedges inside the dispatch doorway slightly misaligned, and the robots' back-off and square-up recoveries can't free it. Centralized re-reads the full state at 20 Hz and doesn't wedge. Recovering from a wedge is the main weakness the warehouse exposed.
 4. **Ghost futures:** no reliable effect on success or time, and in four of five conditions they had *more* surprises than heuristic priors (for example 65 vs 28 per run on the slow link). Only the clean run favours them (0 vs 3). Replanning around predicted jams sends payloads on longer, less familiar routes, and that doesn't pay off here.
 
+### 4.7 Route smoothing: an A/B test that said no
+
+The grid planner's routes zigzag: on the doorway level, 18 direction changes and 4 stops to turn in place for a 31.8 m route. `Grid::smooth` shortcuts them in open space and turns while moving. It never shortcuts stretches with under 0.3 m of slack, and never gives up clearance the grid path had (up to 0.5 m). It cuts that route to 3 direction changes and no turn stops, and the warehouse routes from 25-39 direction changes to 9-15.
+
+It does not help delivery. Warehouse, 5 conditions × 30 seeds per variant (`cargo run --release --example ab_smooth -- 30`):
+
+| Variant | Smoothing off | Smoothing on |
+|---|---|---|
+| Speculative, ghost futures | 144/150 · 137.9 s · 11.9 surprises | 140/150 · 139.0 s · 42.8 surprises |
+| Speculative, heuristic | 144/150 · 133.8 s · 13.7 surprises | 133/150 · 134.9 s · 39.5 surprises |
+| Centralized | 149/150 · 131.7 s · 3.1 surprises | 149/150 · 128.3 s · 1.4 surprises |
+
+Smoothing roughly triples surprises for speculative control and lowers its success (clearly for heuristic priors, within noise for ghost futures), with no speed gain. Only the centralized baseline gets slightly faster. So route geometry wasn't what limited performance: speculative trees appear to rely on the grid path's denser waypoints and explicit turns. Smoothing stays available (`EdgeConfig::smooth`) but is off by default, and every other result in this document is with it off. Two early attempts were worse still: a 0.15 m margin pulled routes against door frames, and a margin taken from a wedged start let shortcuts pass through walls.
+
 ## 5. Roadmap
 
 **M2: make the claim measurable (done).** Centralized baseline, seed sweeps with CIs, latency and outage sweeps, plots.

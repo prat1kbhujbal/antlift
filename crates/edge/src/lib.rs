@@ -49,6 +49,11 @@ pub struct EdgeConfig {
     pub ghost_horizon: f32,
     /// Request choke points this far ahead along the route (m).
     pub zone_lookahead: f32,
+    /// Smooth planned routes (shortcuts in open space, turning while moving).
+    /// Off by default: it makes routes look far better but, in a 30-seed A/B
+    /// test, tripled surprises for speculative control without making it
+    /// faster (see docs/design.md, section 4.7).
+    pub smooth: bool,
     /// Centralized mode: command rate (s).
     pub command_period: f32,
 }
@@ -65,6 +70,7 @@ impl Default for EdgeConfig {
             ghosts: true,
             ghost_horizon: 10.0,
             zone_lookahead: 20.0,
+            smooth: false,
             command_period: 0.05,
         }
     }
@@ -985,16 +991,24 @@ impl EdgeServer {
                 .sum();
             3.0 * h + jams
         };
-        let mut poses = self
-            .grid(&with_others)
-            .plan_with(start, spec.goal, &fp, &penalty);
+        // Each attempt is smoothed against the same obstacles it was planned with.
+        let smooth = self.cfg.smooth;
+        let mut attempt = |obstacles: &[Aabb], penalty: &dyn Fn(V2) -> f32| {
+            let g = self.grid(obstacles);
+            g.plan_with(start, spec.goal, &fp, penalty).map(|raw| {
+                if smooth {
+                    g.smooth(&raw, &fp)
+                } else {
+                    raw
+                }
+            })
+        };
+        let mut poses = attempt(&with_others, &penalty);
         if poses.is_none() {
-            poses = self
-                .grid(&s.obstacles)
-                .plan_with(start, spec.goal, &fp, &penalty);
+            poses = attempt(&s.obstacles, &penalty);
         }
         if poses.is_none() && !s.obstacles.is_empty() {
-            poses = self.grid(&[]).plan(start, spec.goal, &fp);
+            poses = attempt(&[], &|_| 0.0);
         }
         let poses = poses.unwrap_or_default();
         let path: Vec<V2> = poses.iter().map(|p| p.pos).collect();

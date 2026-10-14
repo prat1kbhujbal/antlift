@@ -267,11 +267,22 @@ pub struct RunResult {
 }
 
 pub fn run(cond: &Condition, variant: Variant, seed: u64, limit: f32) -> RunResult {
+    run_with(cond, variant, seed, limit, EdgeConfig::default())
+}
+
+/// [`run`] with explicit edge settings (for A/B tests of edge features).
+pub fn run_with(
+    cond: &Condition,
+    variant: Variant,
+    seed: u64,
+    limit: f32,
+    edge: EdgeConfig,
+) -> RunResult {
     let base = SessionConfig::new(variant.control);
     let mut sess = Session::new(SessionConfig {
         edge: EdgeConfig {
             ghosts: variant.ghosts,
-            ..base.edge
+            ..edge
         },
         layout: cond.level.layout(seed),
         link: cond.link,
