@@ -1,0 +1,10 @@
+[package]
+name = "antlift-sim"
+description = "2D physics world, robots and on-robot branch execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+antlift-core.workspace = true
+rapier2d.workspace = true
