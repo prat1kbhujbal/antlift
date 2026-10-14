@@ -2,7 +2,7 @@
 //! invisible parts visible (radio packets, learned surprise map, risks).
 
 use super::theme::*;
-use super::{draw_box, Overlays, Pane, View, FLASH_SECS};
+use super::{draw_box, draw_box_lines, Overlays, Pane, View, FLASH_SECS};
 use antlift_app::{EdgeView, PacketKind};
 use antlift_core::{ControlMode, Role, ROBOT_RADIUS, V2};
 use antlift_edge::Contingency;
@@ -47,6 +47,10 @@ pub fn draw(pane: &Pane, v: &View, edge: &EdgeView, ov: Overlays, selected: Opti
         if ov.risks {
             draw_risks(v, edge);
         }
+    }
+
+    if ov.ghosts {
+        draw_ghosts(v, edge, s.swarm.world.object_half);
     }
 
     for (c, angle, half) in s.swarm.world.crate_boxes() {
@@ -207,6 +211,43 @@ fn draw_risks(v: &View, edge: &EdgeView) {
         let tw = super::text_width(&text, 14.0);
         draw_rectangle(s.x - 2.0, s.y - 11.0, tw + 4.0, 14.0, alpha(BG, 0.8));
         draw_text(&text, s.x, s.y, 14.0, alpha(RISK, 0.4 + 0.6 * p));
+    }
+}
+
+/// The futures the edge simulated at its last plan: faint payload outlines
+/// along each one, red with a cross where that future jammed.
+fn draw_ghosts(v: &View, edge: &EdgeView, half: V2) {
+    let Some(plan) = &edge.plan else { return };
+    let mut labelled: Vec<V2> = vec![];
+    for g in &plan.ghosts {
+        let color = if g.stall.is_some() { MISS } else { GHOST };
+        let n = g.poses.len();
+        // An outline every 1 s, fading in toward the end of the future.
+        for (k, &(p, a)) in g.poses.iter().enumerate().step_by(4) {
+            let f = (k + 1) as f32 / n.max(1) as f32;
+            draw_box_lines(v, p, a, half, 1.0, alpha(color, 0.08 + 0.22 * f));
+        }
+        if let Some(&(p, a)) = g.poses.last() {
+            draw_box_lines(v, p, a, half, 1.5, alpha(color, 0.55));
+            // Label jams, and futures that end somewhere distinct.
+            if g.stall.is_some() || labelled.iter().all(|l: &V2| l.dist(p) > 2.0) {
+                labelled.push(p);
+                let s = v.px(p);
+                draw_text(
+                    g.what_if.label(),
+                    s.x + 4.0,
+                    s.y - 4.0,
+                    13.0,
+                    alpha(color, 0.8),
+                );
+            }
+        }
+        if let Some(st) = g.stall {
+            let s = v.px(st);
+            let k = 6.0;
+            draw_line(s.x - k, s.y - k, s.x + k, s.y + k, 2.5, MISS);
+            draw_line(s.x - k, s.y + k, s.x + k, s.y - k, 2.5, MISS);
+        }
     }
 }
 

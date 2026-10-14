@@ -52,6 +52,7 @@ impl Pane {
 #[derive(Clone, Copy)]
 pub struct Overlays {
     pub packets: bool,
+    pub ghosts: bool,
     pub heat: bool,
     pub risks: bool,
 }
@@ -125,6 +126,7 @@ pub mod theme {
     pub const MISS: Color = rgb(0xff, 0x40, 0x40);
     pub const PATH: Color = Color::new(0.40, 0.90, 0.90, 0.35);
     pub const RISK: Color = rgb(0xff, 0xb3, 0x40);
+    pub const GHOST: Color = rgb(0xa8, 0xd8, 0xff);
 
     pub fn alpha(c: Color, a: f32) -> Color {
         Color::new(c.r, c.g, c.b, c.a * a)
@@ -141,6 +143,20 @@ pub fn draw_box(v: &View, center: V2, angle: f32, half: V2, color: Color) {
     .map(|k| v.px(center + k.rotate(angle)));
     draw_triangle(c[0], c[1], c[2], color);
     draw_triangle(c[0], c[2], c[3], color);
+}
+
+pub fn draw_box_lines(v: &View, center: V2, angle: f32, half: V2, thickness: f32, color: Color) {
+    let c = [
+        V2::new(-half.x, -half.y),
+        V2::new(half.x, -half.y),
+        V2::new(half.x, half.y),
+        V2::new(-half.x, half.y),
+    ]
+    .map(|k| v.px(center + k.rotate(angle)));
+    for i in 0..4 {
+        let (a, b) = (c[i], c[(i + 1) % 4]);
+        draw_line(a.x, a.y, b.x, b.y, thickness, color);
+    }
 }
 
 pub fn dashed_line(a: Vec2, b: Vec2, thickness: f32, color: Color) {

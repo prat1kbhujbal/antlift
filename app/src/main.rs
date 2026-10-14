@@ -22,7 +22,7 @@ const HELP: &[&str] = &[
     "R-click kick · G shake loose · X kill robot",
     "E edge on/off · [ ] latency · L packet loss",
     "C switch mode live · V side-by-side compare",
-    "P packets · H learned heat map · K risks",
+    "T ghost futures · P packets · H heat map · K risks",
     "F fast-forward · Space pause · R reset · Esc",
 ];
 
@@ -66,6 +66,7 @@ impl App {
             selected: None,
             overlays: Overlays {
                 packets: true,
+                ghosts: true,
                 heat: true,
                 risks: true,
             },
@@ -212,6 +213,9 @@ fn handle_input(app: &mut App, views: &[View]) {
     }
     if is_key_pressed(KeyCode::R) {
         app.reset();
+    }
+    if is_key_pressed(KeyCode::T) {
+        app.overlays.ghosts = !app.overlays.ghosts;
     }
     if is_key_pressed(KeyCode::P) {
         app.overlays.packets = !app.overlays.packets;

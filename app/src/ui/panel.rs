@@ -97,6 +97,19 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
         18.0,
         TEXT,
     );
+    if let Some(plan) = &edge.plan {
+        let jammed = plan.ghosts.iter().filter(|g| g.stall.is_some()).count();
+        if !plan.ghosts.is_empty() {
+            c.line(
+                &format!(
+                    "ghost futures: {} simulated, {jammed} jammed",
+                    plan.ghosts.len()
+                ),
+                18.0,
+                if jammed > 0 { MISS } else { GHOST },
+            );
+        }
+    }
     if s.control == ControlMode::Speculative {
         let (mut on_tree, mut reflex, mut dead) = (0, 0, 0);
         for (i, b) in s.swarm.brains.iter().enumerate() {
@@ -143,7 +156,7 @@ pub fn single(rect: Rect, pane: &Pane, edge: &EdgeView, ui: &Ui) {
 fn legend(c: &mut Col) {
     c.gap(4.0);
     c.line("LEGEND", 15.0, FAINT);
-    let items: [(Color, &str); 8] = [
+    let items: [(Color, &str); 10] = [
         (PUSHER, "pusher"),
         (STEERER, "steerer"),
         (REFLEX, "reflex, no tree"),
@@ -152,6 +165,8 @@ fn legend(c: &mut Col) {
         (CENT, "command packet"),
         (DIM, "status packet"),
         (MISS, "surprise / lost (x)"),
+        (GHOST, "ghost future"),
+        (MISS, "jammed future (x)"),
     ];
     for pair in items.chunks(2) {
         let mut x = c.x;
