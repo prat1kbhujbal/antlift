@@ -47,7 +47,8 @@ pub struct EdgeConfig {
     pub ghosts: bool,
     /// How far ahead each ghost future is simulated (s).
     pub ghost_horizon: f32,
-    /// Request choke points this far ahead along the route (m).
+    /// Claim choke points only this far ahead along the route (m); further
+    /// ones cut the plan short until the team gets closer.
     pub zone_lookahead: f32,
     /// Smooth planned routes (shortcuts in open space, turning while moving).
     /// Off by default: it makes routes look far better but, in a 30-seed A/B
@@ -69,7 +70,7 @@ impl Default for EdgeConfig {
             control: ControlMode::Speculative,
             ghosts: true,
             ghost_horizon: 10.0,
-            zone_lookahead: 20.0,
+            zone_lookahead: 10.0,
             smooth: false,
             command_period: 0.05,
         }
@@ -129,6 +130,19 @@ pub struct Plan {
     pub ghosts: Vec<Ghost>,
     /// Choke point this team is queued for; the plan stops in front of it.
     pub waiting_for: Option<usize>,
+    /// The choke point this plan stops short of because it's too far away
+    /// to claim yet; the plan is extended as the team gets closer.
+    pub short_of: Option<usize>,
+}
+
+/// Where a plan must stop because of a choke point.
+struct Stop {
+    /// Last path index to keep.
+    cut: usize,
+    /// The choke point stopped in front of.
+    zone: usize,
+    /// The choke point held by someone else, if that's the reason.
+    wait_for: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -187,12 +201,14 @@ struct Team {
     need_replan: bool,
     last_plan_t: f32,
     delivered: bool,
-    /// Where the other payloads were when this team last planned.
-    others_at_plan: Vec<V2>,
     /// Spots where this team's own "as planned" future jammed: routes avoid them.
     jam_spots: Vec<V2>,
     /// A surprise arrived too soon after the last plan; replan when allowed.
     pending_surprise: bool,
+    /// The next plan should ignore the current route (something went wrong
+    /// with it). Otherwise replans prefer to stay near it, so the team
+    /// doesn't flip between equally good routes as others move around.
+    fresh_route: bool,
 }
 
 pub struct EdgeServer {
@@ -218,14 +234,19 @@ pub struct EdgeServer {
 const HEAT_CELL: f32 = 2.0;
 /// Seconds between attempts when no route could be found.
 const PLAN_RETRY: f32 = 2.0;
-/// Replan a team when another payload has moved this far since its last plan.
-const OTHERS_MOVED: f32 = 3.0;
-/// ...but no more often than this (s).
-const OTHERS_REPLAN_GAP: f32 = 3.0;
 /// A waiting team re-checks its queue this often anyway (s).
 const WAIT_RECHECK: f32 = 5.0;
 /// Clearance kept around other payloads (their robots) when planning (m).
 const OTHER_MARGIN: f32 = 0.6;
+/// Staying within this distance of the current route is preferred (m)...
+const STICKY_RADIUS: f32 = 1.5;
+/// ...by this extra cost multiplier on cells off it.
+const STICKY_COST: f32 = 3.0;
+/// Extend a plan that stops short once the payload is this close to its end (m)...
+const EXTEND_WITHIN: f32 = 5.0;
+/// ...but no more often than this (s), so a borderline distance can't make
+/// it replan on every camera frame.
+const EXTEND_GAP: f32 = 2.0;
 /// Payload counts as delivered within this distance of its goal (m).
 const DELIVERED: f32 = 1.0;
 /// Surprises replan a team at most this often, so recoveries get to run (s).
@@ -407,6 +428,7 @@ impl EdgeServer {
                 self.bump_heat(at);
                 if let Some(r) = self.robots.get(robot as usize) {
                     let t = &mut self.teams[r.team];
+                    t.fresh_route = true;
                     if self.now - t.last_plan_t > SURPRISE_REPLAN_GAP {
                         t.need_replan = true;
                     } else {
@@ -610,12 +632,12 @@ impl EdgeServer {
                     .zip(&s.obstacles)
                     .any(|(a, b)| a.center().dist(b.center()) > 0.5)
         });
-        let now = s.t;
         for k in 0..self.teams.len() {
             let o = s.objects[k];
             let t = &mut self.teams[k];
             if obstacles_changed {
                 t.need_replan = true;
+                t.fresh_route = true;
             }
             if let Some(plan) = t.plan.as_ref().filter(|p| !p.path.is_empty()) {
                 let off = plan
@@ -625,6 +647,22 @@ impl EdgeServer {
                     .fold(f32::INFINITY, f32::min);
                 if off > 2.5 {
                     t.need_replan = true;
+                    t.fresh_route = true;
+                }
+                // A plan that stops short of a choke point is extended once
+                // the payload is close enough to claim it: earlier, the new
+                // plan would just stop short again, and replanning that
+                // often lets the route flip between equally good options.
+                let near_end = plan
+                    .waypoints
+                    .last()
+                    .is_none_or(|w| w.pos.dist(o.pos) < EXTEND_WITHIN);
+                if let Some(z) = plan.short_of {
+                    let claimable =
+                        self.layout.chokepoints[z].dist(o.pos) < self.cfg.zone_lookahead;
+                    if (near_end || claimable) && s.t - t.last_plan_t > EXTEND_GAP {
+                        t.need_replan = true;
+                    }
                 }
                 // Near the end of a truncated horizon: extend it, even if the
                 // robots' "reached the end" reports got lost.
@@ -633,16 +671,6 @@ impl EdgeServer {
                 {
                     t.need_replan = true;
                 }
-            }
-            // Other payloads are obstacles in this team's plan: replan when
-            // they have moved on enough to matter.
-            let moved = t
-                .others_at_plan
-                .iter()
-                .zip(s.objects.iter().enumerate().filter(|(j, _)| *j != k))
-                .any(|(a, (_, b))| a.dist(b.pos) > OTHERS_MOVED);
-            if moved && now - t.last_plan_t > OTHERS_REPLAN_GAP {
-                t.need_replan = true;
             }
         }
 
@@ -703,6 +731,7 @@ impl EdgeServer {
             for t in &mut self.teams {
                 if t.plan.as_ref().is_some_and(|p| p.waiting_for == Some(z)) {
                     t.need_replan = true;
+                    t.fresh_route = true;
                 }
             }
         }
@@ -786,7 +815,8 @@ impl EdgeServer {
     }
 
     /// Spread team `k`'s active robots evenly around its payload. Robots
-    /// already gripping it keep their grip point so they don't let go.
+    /// already gripping it keep their grip point so they don't let go, and
+    /// newcomers fill the gaps between them.
     fn assign_slots(&mut self, k: usize) {
         let Some(s) = &self.snapshot else { return };
         let o = s.objects[k];
@@ -807,8 +837,26 @@ impl EdgeServer {
             };
         }
 
-        // Fill the real gaps between existing grips: try points densely
-        // around the perimeter, nearest robot first, keeping robots apart.
+        if taken.is_empty() {
+            // Nobody grips yet: spread the team evenly all round, so forces
+            // and torques balance, and give each slot to the nearest robot.
+            let mut free = perimeter_slots(o.half, members.len());
+            for &i in &members {
+                let me = local(s.robots[i].pos);
+                let best = free
+                    .iter()
+                    .enumerate()
+                    .min_by(|a, b| a.1.dist(me).total_cmp(&b.1.dist(me)))
+                    .map(|(j, _)| j);
+                if let Some(j) = best {
+                    self.robots[i].slot = Some(free.swap_remove(j));
+                }
+            }
+            return;
+        }
+
+        // Joining robots that already grip: fill the real gaps between their
+        // grips, trying points densely round the perimeter, nearest robot first.
         let gap = 2.0 * ROBOT_RADIUS + 0.05;
         let dense = perimeter_slots(o.half, (perimeter(o.half) / 0.1) as usize);
         let mut waiting: Vec<usize> = members
@@ -881,9 +929,11 @@ impl EdgeServer {
         out
     }
 
-    /// Claim the next chain of choke points on this route if they're free;
-    /// otherwise return the path index to stop at and the zone to wait for.
-    fn reserve_route(&mut self, k: usize, path: &[V2]) -> Option<(usize, usize)> {
+    /// Claim the next chain of choke points on this route if it's close and
+    /// free. Returns where the plan must stop: in front of a chain someone
+    /// else holds (and which zone to queue for), or in front of one that's
+    /// still too far away to claim.
+    fn reserve_route(&mut self, k: usize, path: &[V2]) -> Option<Stop> {
         if path.is_empty() || self.zones.is_empty() {
             return None;
         }
@@ -901,22 +951,31 @@ impl EdgeServer {
                 j += 1;
             }
             let chain = &zones[i..j];
-            if arc[chain[0].1] > self.cfg.zone_lookahead {
-                return None; // not close enough to ask yet
+            // Stop a body length before the chain's first zone.
+            let stop_at = arc[chain[0].1] - body;
+            let cut = (0..=chain[0].1)
+                .rev()
+                .find(|&q| arc[q] <= stop_at)
+                .unwrap_or(0);
+            let mine = chain.iter().all(|(z, _, _)| self.zones[*z] == Some(k));
+            if !mine && arc[chain[0].1] > self.cfg.zone_lookahead {
+                // Too far to claim yet: don't hold a door others could use.
+                return Some(Stop {
+                    cut,
+                    zone: chain[0].0,
+                    wait_for: None,
+                });
             }
-            if let Some(&(z, entry, _)) = chain
+            if let Some(&(z, _, _)) = chain
                 .iter()
                 .find(|(z, _, _)| self.zones[*z].is_some_and(|o| o != k))
             {
-                // Someone else holds part of the chain: stop a body length
-                // before its first zone and queue for the blocker.
-                let stop_at = arc[chain[0].1] - body;
-                let cut = (0..=chain[0].1)
-                    .rev()
-                    .find(|&q| arc[q] <= stop_at)
-                    .unwrap_or(0);
-                let _ = entry;
-                return Some((cut, z));
+                // Someone else holds part of the chain: queue for the blocker.
+                return Some(Stop {
+                    cut,
+                    zone: chain[0].0,
+                    wait_for: Some(z),
+                });
             }
             for &(z, _, _) in chain {
                 self.zones[z] = Some(k);
@@ -936,6 +995,7 @@ impl EdgeServer {
             if spots.len() > MAX_JAM_SPOTS {
                 spots.remove(0);
             }
+            self.teams[k].fresh_route = true;
             self.plan_team(k);
         }
         self.stats.last_plan_us = t0.elapsed().as_micros();
@@ -958,12 +1018,15 @@ impl EdgeServer {
             heading: me.angle,
         };
 
-        // Other payloads (and their robots) are obstacles for now.
+        // Delivered payloads are parked for good: plan around them. Payloads
+        // still on the move are not walls (even while briefly waiting or
+        // turning): sharing doors with them is what reservations are for,
+        // and treating them as walls makes routes flip as they come and go.
         let others: Vec<Aabb> = s
             .objects
             .iter()
             .enumerate()
-            .filter(|(j, _)| *j != k)
+            .filter(|(j, _)| *j != k && self.teams[*j].delivered)
             .map(|(_, o)| payload_bounds(o, OTHER_MARGIN))
             .collect();
         let mut with_others = s.obstacles.clone();
@@ -975,7 +1038,18 @@ impl EdgeServer {
         // (everyone's) and this team's own jam spots from ghost futures.
         let (heat, heat_nx, origin) = (self.heat.clone(), self.heat_nx, self.layout.arena.min);
         let jam_spots = self.teams[k].jam_spots.clone();
+        // Unless the current route went wrong, prefer staying near it.
+        let sticky = match (&self.teams[k].plan, self.teams[k].fresh_route) {
+            (Some(prev), false) if !prev.path.is_empty() => {
+                Some(near_mask(self.layout.arena, &prev.path, STICKY_RADIUS))
+            }
+            _ => None,
+        };
+        self.teams[k].fresh_route = false;
         let penalty = move |p: V2| {
+            let off_route = sticky
+                .as_ref()
+                .is_some_and(|(mask, nx)| !mask[cell_index(origin, *nx, mask.len(), p)]);
             let l = p - origin;
             let (x, y) = (
                 (l.x / HEAT_CELL).max(0.0) as usize,
@@ -989,7 +1063,7 @@ impl EdgeServer {
                 .iter()
                 .map(|s| (1.0 - s.dist(p) / 2.0).max(0.0) * 6.0)
                 .sum();
-            3.0 * h + jams
+            3.0 * h + jams + if off_route { STICKY_COST } else { 0.0 }
         };
         // Each attempt is smoothed against the same obstacles it was planned with.
         let smooth = self.cfg.smooth;
@@ -1015,12 +1089,13 @@ impl EdgeServer {
 
         // Choke points: claim what's next, or stop short and queue.
         self.release_unentered(k);
-        let wait = self.reserve_route(k, &path);
-        if wait.is_some() {
+        let stop = self.reserve_route(k, &path);
+        let waiting_for = stop.as_ref().and_then(|s| s.wait_for);
+        if waiting_for.is_some() {
             self.stats.zone_waits += 1;
         }
-        let (route, target) = match wait {
-            Some((cut, _)) => (&poses[..=cut.min(poses.len().saturating_sub(1))], None),
+        let (route, target) = match &stop {
+            Some(st) => (&poses[..=st.cut.min(poses.len().saturating_sub(1))], None),
             None => (&poses[..], Some(spec.goal)),
         };
         let grid = self.grid(&s.obstacles);
@@ -1081,13 +1156,6 @@ impl EdgeServer {
         }
         candidates.sort_by(|a, b| (b.p * b.kind.impact()).total_cmp(&(a.p * a.kind.impact())));
 
-        self.teams[k].others_at_plan = s
-            .objects
-            .iter()
-            .enumerate()
-            .filter(|(j, _)| *j != k)
-            .map(|(_, o)| o.pos)
-            .collect();
         self.teams[k].plan = Some(Plan {
             team: k,
             version: self.version,
@@ -1096,7 +1164,11 @@ impl EdgeServer {
             waypoints,
             candidates,
             ghosts: vec![],
-            waiting_for: wait.map(|(_, z)| z),
+            waiting_for,
+            short_of: stop
+                .as_ref()
+                .filter(|st| st.wait_for.is_none())
+                .map(|st| st.zone),
         });
         let has_route = self.teams[k]
             .plan
@@ -1346,6 +1418,38 @@ fn extrapolate(o: ObjectState, age: f32) -> ObjectState {
     }
 }
 
+/// Cells (on the planner's grid) within `radius` of `path`, and the column count.
+fn near_mask(arena: Aabb, path: &[V2], radius: f32) -> (Vec<bool>, usize) {
+    let size = arena.max - arena.min;
+    let nx = (size.x / grid::CELL).ceil() as usize;
+    let ny = (size.y / grid::CELL).ceil() as usize;
+    let mut mask = vec![false; nx * ny];
+    let r = (radius / grid::CELL).ceil() as isize;
+    for p in path {
+        let l = *p - arena.min;
+        let (cx, cy) = ((l.x / grid::CELL) as isize, (l.y / grid::CELL) as isize);
+        for y in (cy - r).max(0)..=(cy + r).min(ny as isize - 1) {
+            for x in (cx - r).max(0)..=(cx + r).min(nx as isize - 1) {
+                let c = arena.min
+                    + V2::new((x as f32 + 0.5) * grid::CELL, (y as f32 + 0.5) * grid::CELL);
+                if c.dist(*p) <= radius {
+                    mask[y as usize * nx + x as usize] = true;
+                }
+            }
+        }
+    }
+    (mask, nx)
+}
+
+/// Index of the grid cell containing `p` (clamped to the grid).
+fn cell_index(origin: V2, nx: usize, len: usize, p: V2) -> usize {
+    let l = p - origin;
+    let ny = len / nx;
+    let x = ((l.x / grid::CELL).max(0.0) as usize).min(nx - 1);
+    let y = ((l.y / grid::CELL).max(0.0) as usize).min(ny - 1);
+    y * nx + x
+}
+
 /// Axis-aligned bounds of a (rotated) payload plus a margin for its robots.
 fn payload_bounds(o: &ObjectState, margin: f32) -> Aabb {
     let (s, c) = o.angle.sin_cos();
@@ -1507,27 +1611,45 @@ mod tests {
     }
 
     #[test]
-    fn only_one_team_gets_a_contested_door() {
-        // Sofa and beam both just in front of the single dispatch door.
+    fn a_held_door_makes_others_queue_in_front() {
+        // The sofa (A) is in the dispatch door; the beam (C) is lined up 5 m
+        // in front of it.
         let layout = Layout::warehouse();
         let mut snap = snapshot(&layout);
-        snap.objects[0].pos = V2::new(33.0, 17.0);
-        snap.objects[0].angle = 0.0;
-        snap.objects[2].pos = V2::new(32.0, 26.5);
+        snap.objects[2].pos = V2::new(33.0, 17.75);
         snap.objects[2].angle = 0.0;
         let mut edge = EdgeServer::new(layout.clone(), no_ghosts());
         edge.handle(Uplink::Camera(snap));
-        edge.tick(0.0);
         let d3 = 2;
-        let owner = edge.zone_owners()[d3].expect("someone holds the dispatch door");
-        let other = if owner == 0 { 2 } else { 0 };
+        edge.zones[d3] = Some(0);
+        edge.zone_entered[d3] = true;
+        edge.tick(0.0);
+        assert_eq!(edge.zone_owners()[d3], Some(0), "A keeps the door it is in");
         let plans = edge.plans();
-        let waiting = plans.iter().find(|p| p.team == other).unwrap();
-        assert_eq!(waiting.waiting_for, Some(d3), "the other team queues");
+        let beam = plans.iter().find(|p| p.team == 2).unwrap();
+        assert_eq!(beam.waiting_for, Some(d3), "the beam queues");
         // Its waypoints stop short of the door.
         let door = layout.chokepoints[d3];
-        assert!(waiting.waypoints.iter().all(|w| door.dist(w.pos) > 1.0));
+        assert!(beam.waypoints.iter().all(|w| door.dist(w.pos) > 1.0));
         assert!(edge.stats.zone_waits >= 1);
+    }
+
+    #[test]
+    fn doors_are_claimed_just_in_time() {
+        // At the start every team is more than 10 m from its first door:
+        // nobody holds one yet, and every plan stops short instead of waiting.
+        let layout = Layout::warehouse();
+        let mut edge = EdgeServer::new(layout.clone(), no_ghosts());
+        edge.handle(Uplink::Camera(snapshot(&layout)));
+        edge.tick(0.0);
+        assert!(edge.zone_owners().iter().all(|z| z.is_none()));
+        for p in edge.plans() {
+            assert!(
+                p.short_of.is_some() && p.waiting_for.is_none(),
+                "team {}",
+                p.team
+            );
+        }
     }
 
     #[test]
