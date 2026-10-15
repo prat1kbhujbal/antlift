@@ -26,7 +26,7 @@ cargo test --release
 
 Screenshots for these docs are taken with `--shot <file.png> <seconds>`, which runs the demo in real time to that moment, saves the window and quits (for example `cargo run --release -- --warehouse --shot docs/warehouse.png 75`).
 
-Debugging tools for the warehouse, all headless and deterministic:
+Debugging tools, all headless and deterministic:
 
 ```sh
 cargo run --release --example traffic_debug -- 6 speculative 10   # waits, reroutes, positions every 10 s
@@ -34,6 +34,7 @@ cargo run --release --example contact_check -- 10 [notraffic]     # time teams s
 cargo run --release --example team_debug -- 1 6 120               # one team's plan, doors and permits
 cargo run --release --example push_check -- 9 2 95 110            # who is touching payload C
 cargo run --release --example hall_check                          # the hall demo, headless
+cargo run --release --example quiet_check -- warehouse 1          # radio once everything has parked
 ```
 
 The toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatically).
@@ -51,7 +52,7 @@ The toolchain is pinned in `rust-toolchain.toml` (rustup installs it automatical
 - **Overlays** (`T` ghost futures, `P` packets, `H` heat map, `K` risk badges) are listed under the controls as on or off. Some only have something to draw at times: ghost futures once a team grips its payload, the heat map after a surprise (drop a crate in the way to make one), and risk badges only on legs with at least a 30% predicted risk.
 - **Panel:** time, link, radio per robot, plans, hits and surprises, and in the warehouse deliveries, door waits, robots lent, and traffic waits, reroutes and make-way moves.
 - **Robots:** blue pushers, amber steerers, purple when running on reflexes (no valid tree), teal when remote-controlled by the baseline, and **green when parked**: the plan is finished and the payload is at its goal. A green ring flash means a predicted branch fired. A red one means a surprise was reported.
-- **Delivered:** when every payload has arrived, a **DELIVERED** banner shows the time, robots settle and park, and after 3 s the run freezes so the radio goes quiet. Parked robots only check in every 5 s (about 1 B/robot/s, down from 40-60 while carrying), and the edge stops replanning and renewing their trees.
+- **Delivered:** when every payload has arrived, a **DELIVERED** banner shows the time, robots settle and park, and after 3 s the run freezes so the radio goes quiet. Parked robots only check in every 5 s (about 1 B/robot/s, down from 45-68 while carrying), and the edge stops replanning and renewing their trees.
 
 ### Controls
 | Input | Action |
@@ -99,7 +100,7 @@ Every piece is written from scratch in Rust; the only external engine is Rapier 
 - **Control:** robots drive with a local velocity loop. When gripping, every robot runs the same feed-forward + P law on the payload's velocity; steerers (far from the centre) add a tangential term to control heading. Pushers and steerers agree without talking because they compute from the same estimate.
 - **Stall detection** by lack of net progress over a window (robust to jiggling), **re-localization** in the plan after re-gripping, and **ant-style reflexes** when no valid tree is held.
 - **Traffic permits:** a robot won't start a leg beyond its permit. It holds the payload where it is, and waiting doesn't count as a stall.
-- **Final hold and parking:** at the end of its plan near the goal, a robot holds the payload *on* the goal, not just still. Once the payload has settled there it parks: it checks in only every 5 s and no longer needs a lease. It goes back to work if the payload is pushed more than 2.5 m off its goal or a new plan arrives. Robots that aren't gripping a delivered payload stay out of its way.
+- **Final hold and parking:** at the end of its plan near the goal, a robot holds the payload *on* the goal, not just still. Once the payload has settled there it parks: it checks in only every 5 s and no longer needs a lease. It goes back to work if the payload is pushed more than 2.5 m off its goal or a new plan arrives. Robots of a delivered payload that aren't gripping it stay out of its way and park too.
 
 ### Protocol (radio)
 - Compact binary trees (positions in cm, angles in 0.1 mrad), 7-byte **traffic permits**, tree and **lease** acknowledgements, **byte-identical retransmission** with an RTT estimate (EWMA, Karn's rule) and exponential backoff, and leases so robots keep working through edge outages.
@@ -124,17 +125,17 @@ Against a **centralized baseline that runs the identical decision code on the ed
 
 ![Latency sweep](docs/img/latency.png)
 
-- **7-10× less radio traffic** (45-68 vs about 440 B/robot/s), with every variant delivering in every run on the hall. On a perfect link centralized is a few seconds faster.
+- **6-10× less radio traffic** (45-68 vs 390-440 B/robot/s), with every variant delivering in every run on the hall. On a perfect link centralized is about 10 s faster (73 vs 83 s).
 - **Flat under latency:** speculative delivers in 76-87 s from 0 to 1000 ms of one-way latency. Centralized slows from 200 ms, succeeds in only 4 of 10 runs at 500 ms and 2 of 10 at 750 ms, and fails every run at 1 s.
 - **Survives edge outages** of up to 40 s in every run, with robots working through cached leases.
-- **Warehouse** (3 payloads, 44 robots): every variant delivers all 3 payloads in every run (150/150), in 127-176 s, with 5-8× less radio for speculative. Centralized is slowest on a slow link (169 s).
-- **Traffic control** stops teams bumping into each other: time spent in contact fell from 28.2 to 0.1 s per run (speculative) and from 33.2 to 0.0 s (centralized), with no extra replanning. It costs 14-27 s per run, because teams now wait for floor instead of shoving through.
+- **Warehouse** (3 payloads, 44 robots): every variant delivers all 3 payloads in every run (150/150), in 128-178 s, with 5-9× less radio for speculative. Centralized is slowest on a slow link (172 s).
+- **Traffic control** stops teams bumping into each other: time spent in contact fell from 28.2 to 0.4 s per run (speculative) and from 33.2 to 0.1 s (centralized), with about the same number of plans. It costs 13-15 s per run, because teams now wait for floor instead of shoving through.
 - **Ghost futures** (probabilities from simulated futures rather than hand-written priors) don't reliably help: within noise on the hall, and in the warehouse faster in three conditions and slower in two. Details are in the design doc.
 
 Building a fair baseline also exposed six real bugs, including a retransmit storm and a shared re-localization bug that had inflated early results. The methodology, every number, and that list are in [docs/design.md](docs/design.md#4-evaluation).
 
 ```sh
-cargo run --release --bin bench     # 720 runs, ~4 min on 20 cores → results/
+cargo run --release --bin bench     # 720 runs, ~3 min on 20 cores → results/
 uv run scripts/plot.py              # → docs/img/
 ```
 

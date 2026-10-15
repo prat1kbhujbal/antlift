@@ -178,7 +178,17 @@ impl Brain {
         let same_plan = self.tree.as_ref().is_some_and(|t| t.nodes == tree.nodes);
         // A transit route is planned from where the robot is now.
         self.via_next = 0;
-        self.permit = tree.permit;
+        // Within one plan permits only grow, so a late copy of an older tree
+        // can't take back what a newer permit granted.
+        let same_version = self
+            .tree
+            .as_ref()
+            .is_some_and(|t| t.version == tree.version);
+        self.permit = if same_version {
+            self.permit.max(tree.permit)
+        } else {
+            tree.permit
+        };
         self.tree = Some(tree);
         if !same_plan {
             self.enter(0);
@@ -187,9 +197,11 @@ impl Brain {
     }
 
     /// A traffic permit for plan `version` (ignored if it's for another plan).
+    /// Permits only grow within a plan, so one that arrives out of order
+    /// can't lower the limit.
     pub fn receive_permit(&mut self, version: u32, node: NodeId) {
         if self.tree.as_ref().is_some_and(|t| t.version == version) {
-            self.permit = node;
+            self.permit = self.permit.max(node);
         }
     }
 
@@ -325,10 +337,14 @@ impl Brain {
             .tree
             .as_ref()
             .is_some_and(|t| is_final_hold(t, self.node));
-        let settled = s.object.vel.len() < PARK_SPEED;
-        if final_hold && s.attached && at_goal < DELIVERED_RADIUS && settled {
+        let settled = s.object.vel.len() < PARK_SPEED && at_goal < DELIVERED_RADIUS;
+        // Holding the payload on its goal at the end of the plan, or not
+        // gripping a payload that's already delivered (nothing left to do).
+        let holding = final_hold && s.attached;
+        let idle = !s.attached && self.tree.is_some();
+        if settled && (holding || idle) {
             self.parked = true;
-        } else if self.parked && (!final_hold || at_goal > UNPARK_RADIUS) {
+        } else if self.parked && (at_goal > UNPARK_RADIUS || (s.attached && !final_hold)) {
             self.parked = false;
         }
 
@@ -704,6 +720,10 @@ mod tests {
         b.receive_permit(6, NO_LIMIT);
         b.tick(&s, 0.1, &mut up);
         assert!(b.held_by_traffic());
+        // A stale, lower permit arriving late changes nothing.
+        b.receive_permit(7, 2);
+        b.receive_permit(7, 1);
+        assert_eq!(b.permit(), 2);
         b.receive_permit(7, NO_LIMIT);
         b.tick(&s, 0.1, &mut up);
         assert!(!b.held_by_traffic());

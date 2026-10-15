@@ -62,8 +62,8 @@ One-way `Link<T>` driven by **sim time**, so results don't depend on how fast th
   - **carry law**: every gripping robot runs the same law on the same estimate, so the swarm agrees without talking. Translation uses a feed-forward + P term toward the waypoint, scaled down while the heading error is large (turn first, then move). Steerers (grip points far from the centre) add a tangential term for heading control.
   - **reflex mode** (no valid tree): grab the nearest free point and push straight at the goal beacon.
   - **traffic permits**: a tree carries a permit ("you may advance up to node N"), and permit messages raise it later. A robot whose next leg isn't permitted holds the payload where it is. Waiting for traffic doesn't count as a stall, so it raises no jam branches or surprises;
-  - **final hold**: at the end of a plan near the goal, robots hold the payload *on the goal* (a gentle push toward it at the heading it arrived with) rather than just still. A velocity-only hold let payloads coast or creep a metre off with nobody to bring them back. Robots of a team whose payload has settled on its goal, but that aren't gripping it, stay where they are: pressing in to grip it would only shove it off;
-  - **parked mode**: at the end of its plan, gripping a payload that's within 1 m of its goal and has settled (under 0.1 m/s), a robot parks. It holds, sends a heartbeat every 5 s instead of every second, and no longer depends on its lease. The edge stops replanning delivered teams and stops renewing parked robots' leases. In the centralized baseline the edge stops commanding parked robots, and robots that hear nothing for 1 s slow their state reports to 1 Hz. After delivery the radio drops to about 1 B/robot/s (speculative) and 16 B/robot/s (centralized).
+  - **final hold**: at the end of a plan near the goal, robots hold the payload *on the goal* (a gentle push toward it at the heading it arrived with) rather than just still. A velocity-only hold let payloads coast or creep a metre off with nobody to bring them back. Robots of a team whose payload has settled on its goal, but that aren't gripping it, stay where they are and park: pressing in to grip it would only shove it off;
+  - **parked mode**: at the end of its plan, gripping a payload that's within 1 m of its goal and has settled (under 0.1 m/s), a robot parks. It holds, sends a heartbeat every 5 s instead of every second, and no longer depends on its lease. The edge stops replanning delivered teams and stops renewing parked robots' leases. In the centralized baseline the edge stops commanding parked robots, and robots that hear nothing for 1 s slow their state reports to 1 Hz. Robots park about 2.5 s after the payload first reaches its goal, once it has settled. From then on the radio is 1.0 B/robot/s (speculative, just heartbeats) and 20-32 B/robot/s (centralized, mostly state reports), measured with `quiet_check`. Before robots that weren't gripping could park, 3 of 44 robots in warehouse seed 1 never parked, and speculative stayed at 2.5 B/robot/s. (An earlier version of this document said 16 B/robot/s for centralized; that was wrong, and the old code measures 32 on the hall too.)
 
 ### 3.4 `antlift-edge`: the edge server
 - **Planner**: holonomic SE(2) A* over (0.25 m cell, 16 headings over π). Clearance is computed exactly from obstacle geometry. The footprint (payload plus gripping robots) is a chain of circles. A 2D geometric distance-to-goal field is the admissible heuristic and also prunes cells that can't reach the goal. Moves that increase clearance are allowed even from a colliding pose, so a payload shoved against a wall can still be planned out. Cells with little slack cost extra, which keeps plans centred in gaps. Typical plan: about 30 ms.
@@ -84,7 +84,7 @@ A level is a list of payloads, each with a goal and a team of robots, plus autho
 - **plans each team separately.** Payloads still on the move are not obstacles to each other's plans (sharing the floor is the traffic manager's job, below; treating them as walls made routes flip as they came and went). Delivered payloads are, as a chain of small boxes along their axis, which fits a payload parked at an angle far better than one box round it. When a payload is delivered, every other team replans round it at once.
 - **reserves choke points.** A team claims the next choke point on its route once it is within 10 m of it, together with any choke points chained too closely behind it to stop between, so nobody ever waits *inside* a corridor. If another team holds any of them, the plan stops a body length in front and the team queues. A reservation is released when the owner's payload has passed through, and queued teams replan straight away.
 - **shares the open floor with block reservations** (`traffic.rs`), the way industrial AGV traffic managers do it. The floor is cut into 1 m blocks. Each team owns the blocks under its payload and robots, and asks for the blocks its footprint sweeps along the next 5 m of its route, one leg (waypoint) at a time. Grants go out in priority order (a team inside a doorway first, then the one with the least route left) and are never taken back, so a team only ever drives onto floor reserved for it. A team that can't get its next leg *books* that leg's free blocks, so lower-priority teams can't slip in front of it. Delivered payloads and teams queued at a door keep their floor too.
-  - **Permits, not replans.** How far a team may go is sent as a 7-byte permit ("up to node N") to each of its robots, and robots hold at the end of their grant. The plan and its contingencies stay as they are, so waiting costs no replanning. A permit goes out when it changes, and is resent if a robot still sits at the old limit 1.5 s later (it was probably lost). That adds about 1.5 B/robot/s. Centralized control applies the same permits to the edge-hosted brains. On single-team levels there's nothing to share, so permits stay unlimited.
+  - **Permits, not replans.** How far a team may go is sent as a 7-byte permit ("up to node N") to each of its robots, and robots hold at the end of their grant. The plan and its contingencies stay as they are, so waiting costs no replanning. A permit goes out when it changes, and is resent if a robot still sits at the old limit 1.5 s later (it was probably lost). Within one plan a permit only ever grows, so robots keep the highest they've seen: a permit overtaken by a later one on a jittery link, or an old tree retransmitted late, can't take a grant back. That adds about 1.5 B/robot/s. Centralized control applies the same permits to the edge-hosted brains. On single-team levels there's nothing to share, so permits stay unlimited.
   - **Deadlocks.** Who waits for whom forms a wait-for graph. A cycle is a deadlock (typically two teams head-on), and the lowest-priority team in it reroutes: it replans keeping off the others' bodies and the floor they are about to drive, but not off the floor it stands on, or it couldn't start. If that team rerouted in the last 10 s, the next lowest goes instead, so the teams take turns rather than retrying a move that didn't work. A team stuck behind the same team for 15 s without a cycle reroutes too.
   - **Make-way spots.** Sometimes there is no way round: two teams head-on in an aisle too narrow to pass, with one standing on the other's goal. Then the rerouting team plans to the nearest free spot (3-8 m away) off the others' floor, preferring spots away from them. Once it is there, or after 30 s, it plans for its goal again.
 - **routes robots in transit.** Robots only drive straight at their grip spot, so a robot lent to a team across the warehouse used to walk into walls. When the straight line is blocked, the edge plans the robot a route on a 2D distance field (walls plus parked payloads with a 0.3 m berth), shortens it by line of sight, and sends up to 8 waypoints in the tree. A robot starting pressed against the payload it just left first steps out to the *nearest* free cell (not the one nearest its goal, which can be across a thin beam). Every lent robot now reaches its new payload, unless that payload is delivered first.
@@ -111,7 +111,7 @@ A level is a list of payloads, each with a goal and a team of robots, plus autho
   So the only difference between the modes is *where decisions are made*.
 - **Conditions:** clean (40 ms), slow (150 ± 50 ms), lossy (20% loss), slow+lossy, disrupted (two kicks, a crate dropped in the upper aisle, front robots shaken loose), and a 10 s edge outage.
 - **Sweeps:** one-way latency from 0 to 1000 ms (10% loss), and edge outage length from 0 to 40 s.
-- **Seeds:** 10 per cell. Each seed randomizes the payload's start pose (±1 m, ±0.4 rad) and the radio's random generator. 720 runs take about 4 minutes on 20 cores (ghost futures with 44 robots dominate).
+- **Seeds:** 10 per cell. Each seed randomizes the payload's start pose (±1 m, ±0.4 rad) and the radio's random generator. 720 runs take about 2.5 minutes on 20 cores (ghost futures with 44 robots dominate).
 - **Metrics:** success within 240 s, time to goal (mean ± 95% CI over successes), and robot radio bytes per robot per second in both directions (the camera feed is infrastructure and isn't counted).
 
 Reproduce with `cargo run --release --bin bench && uv run scripts/plot.py`.
@@ -136,7 +136,7 @@ Full tables, including both sweeps for all three variants, are in `results/summa
 ![Outage sweep](img/outage.png)
 
 ### 4.3 What the data supports
-1. **7-10× less radio traffic for the same task.** Speculative uses 45-68 B/robot/s against 390-440 for centralized. Every variant succeeds 10/10 in every condition. On a good link centralized is a few seconds faster (for example 72.9 vs 82.8 s clean), because it reacts to everything at 20 Hz with the full picture.
+1. **6-10× less radio traffic for the same task.** Speculative uses 45-68 B/robot/s against 390-440 for centralized. Every variant succeeds 10/10 in every condition. On a good link centralized is faster, by up to 10 s (72.9 vs 82.8 s clean), because it reacts to everything at 20 Hz with the full picture.
 2. **Latency tolerance is the decisive difference.** Speculative time to goal stays within 76-87 s from 0 to 1000 ms of one-way latency (10/10 at every point). Centralized slows from 200 ms (84 s), takes 139 s at 300 ms, and succeeds in only 4/10 runs at 500 ms, 2/10 at 750 ms and 0/10 at 1000 ms. The hall's three turns make remote control break down sooner than the old single doorway did.
 3. **Outages:** every variant recovers in every run, up to 40 s offline. Times are within about 5 s of each other, with centralized slightly ahead.
 4. **Ghost futures don't reliably help.** On the hall they are within noise of heuristic priors. In the warehouse (section 4.6) they are faster in three conditions and slower in two. Simulating futures also costs compute: about 25 ms per plan per team, and most of the benchmark's CPU.
@@ -179,21 +179,21 @@ Same three variants, 10 seeds per condition (start poses jittered ±0.5 m, ±0.2
 
 | Condition | Speculative | Speculative, heuristic | Centralized |
 |---|---|---|---|
-| clean | 10/10 · 137.1 ± 12.2 · 46 | 10/10 · 160.9 ± 19.8 · 44 | 10/10 · 144.0 ± 14.8 · 346 |
-| slow (150 ms) | 10/10 · 139.1 ± 13.0 · 45 | 10/10 · 154.4 ± 17.1 · 45 | 10/10 · 168.5 ± 19.0 · 333 |
-| lossy (20%) | 10/10 · 141.0 ± 12.4 · 63 | 10/10 · 175.6 ± 16.9 · 60 | 10/10 · 127.3 ± 4.3 · 354 |
-| attrition (1 in 4 robots die at 40 s) | 10/10 · 153.8 ± 17.9 · 41 | 10/10 · 148.3 ± 14.0 · 41 | 10/10 · 152.7 ± 9.3 · 311 |
-| 15 s edge outage at 40 s | 10/10 · 151.6 ± 13.7 · 43 | 10/10 · 131.1 ± 5.4 · 46 | 10/10 · 155.0 ± 9.7 · 315 |
+| clean | 10/10 · 136.3 ± 13.7 · 47 | 10/10 · 160.9 ± 19.8 · 44 | 10/10 · 132.4 ± 8.7 · 360 |
+| slow (150 ms) | 10/10 · 141.5 ± 20.5 · 45 | 10/10 · 149.8 ± 19.2 · 46 | 10/10 · 172.0 ± 22.0 · 333 |
+| lossy (20%) | 10/10 · 140.1 ± 12.5 · 62 | 10/10 · 177.9 ± 8.3 · 60 | 10/10 · 128.6 ± 8.0 · 360 |
+| attrition (1 in 4 robots die at 40 s) | 10/10 · 158.1 ± 18.5 · 41 | 10/10 · 148.3 ± 14.0 · 40 | 10/10 · 141.0 ± 8.9 · 322 |
+| 15 s edge outage at 40 s | 10/10 · 150.2 ± 11.8 · 42 | 10/10 · 131.1 ± 5.4 · 46 | 10/10 · 147.5 ± 9.8 · 325 |
 
 ![Warehouse](img/warehouse.png)
 
 What it shows:
-1. **Coordination works in every variant.** Teams queue for doors, share the open floor through block reservations (section 4.9), break deadlocks, and lend robots only where a grip spot is free. Teams now spend 0-0.1 s per run in contact, against 28-33 s without traffic control.
+1. **Coordination works in every variant.** Teams queue for doors, share the open floor through block reservations (section 4.9), break deadlocks, and lend robots only where a grip spot is free. Teams now spend 0.1-0.4 s per run in contact, against 28-33 s without traffic control.
 2. **Every variant delivers in every run (150/150).**
-3. **No variant is fastest everywhere.** Speculative with ghost futures is fastest on a clean and a slow link (137 and 139 s), heuristic priors with an edge outage (131 s) and, within noise, under attrition (148 s), and centralized on a lossy link (127 s). Speculative uses 5-8× less radio (41-63 vs 311-354 B/robot/s).
-4. **Centralized is slowest on the slow link** (169 s), where its 20 Hz loop suffers most.
+3. **No variant is fastest everywhere.** Centralized is fastest on a clean link (132 s, within noise of ghost futures at 136 s), on a lossy link (129 s) and under attrition (141 s). Speculative with ghost futures is fastest on a slow link (142 s), and heuristic priors with an edge outage (131 s). Speculative uses 5-9× less radio (40-62 vs 322-360 B/robot/s).
+4. **Centralized is slowest on the slow link** (172 s), where its 20 Hz loop suffers most.
 
-Times are 15-40 s longer than before traffic control (section 4.9): teams now wait for floor instead of shoving through each other.
+Times are longer than before traffic control (section 4.9), because teams now wait for floor instead of shoving through each other: by 10-23 s for ghost futures and centralized, but by 9-67 s for heuristic priors, worst on a lossy link (111 → 178 s). Why heuristic priors suffer most isn't understood yet.
 
 Parking (robots holding a delivered payload go quiet, section 3.3) lowered centralized radio here from about 445 B/robot/s to what the table shows, because delivered teams no longer receive streamed commands.
 
@@ -241,11 +241,11 @@ With only door reservations, teams on the open floor drove straight through each
 | | Contact (s/run) | Mean time (s) | Plans/run | Delivered |
 |---|---|---|---|---|
 | speculative, no traffic control | 28.2 | 123 | 70 | 10/10 |
-| speculative, traffic control | 0.1 | 137 | 70 | 10/10 |
+| speculative, traffic control | 0.4 | 136 | 73 | 10/10 |
 | centralized, no traffic control | 33.2 | 117 | 81 | 10/10 |
-| centralized, traffic control | 0.0 | 144 | 77 | 10/10 |
+| centralized, traffic control | 0.1 | 132 | 80 | 10/10 |
 
-Contact essentially disappears, at a cost of 14-27 s per run, with no extra replanning: waiting is a 7-byte permit, not a new plan.
+Contact essentially disappears, at a cost of 13-15 s per run, with about the same number of plans: waiting is a 7-byte permit, not a new plan.
 
 Getting there exposed several problems that the shoving had hidden:
 - **Make-way spots.** Head-on in the aisle between the racks, with one team standing on the other's goal, neither could route round the other, and rerouting only ever planned to the team's own goal. Both fell back to their old routes, 68 times in one run. Now, if a deadlock reroute finds no way round, the team plans to the nearest free spot off the others' floor, then resumes.
@@ -255,6 +255,7 @@ Getting there exposed several problems that the shoving had hidden:
 - **A hold that didn't hold.** The final hold only damped velocity, so a payload could creep off its goal. It now holds position on the goal. Unattached robots of a delivered payload no longer press in to grip it.
 - **Invisible teams.** A team queued at a door has no waypoints, so it was left out of the traffic map, and others were granted floor straight through it.
 - **Lent robots dragging their old payload (centralized only).** On the robot, a brain lent to another team lets go of its old payload in the sim. The edge-hosted brains never did: they still saw "attached", took it for their new payload and "carried" it, dragging the old one 7 m off its goal. The edge now tells them to let go.
+- **A reroute that forgot why.** When the "as planned" ghost future jams, the edge plans a team twice. The first pass consumed the floor-to-avoid of a deadlock reroute, so the plan that was actually sent ignored it. Found in code review; the set is now cleared only after both passes. The same review made permits monotonic on the robot (a late or reordered permit used to lower the limit until the next resend).
 - **A byte that cost a branch.** The permit first took one byte in every tree. On the hall, which has no traffic, that pushed one contingency out of the 256-byte budget, and the demo jammed at the press line (6 surprises, 78 s instead of 0 and 73 s). Re-taking the README screenshots caught it; the jittered benchmark seeds only moved within noise. The permit is now sent only when there's a limit, and the hall is byte-for-byte as before.
 
 ## 5. Roadmap
@@ -271,7 +272,7 @@ Getting there exposed several problems that the shoving had hidden:
 **M4: scale and scenarios (in progress)**
 - Done: the three-team warehouse with choke-point reservations, deadlock-free chaining, robot lending, transit routes and block-reservation traffic control.
 - Next: wedge recovery in doorways (robots release and re-grip to squeeze through, or a larger planned back-off); 64-256 robots; more layouts.
-- Traffic: win back the 14-27 s it costs. Plan routes that avoid floor others have reserved up front, instead of waiting at the edge of it; add one-way lanes in the rack aisles; grant swept shapes rather than 1 m blocks, so teams can pass closer.
+- Traffic: win back the 13-15 s it costs (more with heuristic priors), and find out why heuristic priors lose most. Plan routes that avoid floor others have reserved up front, instead of waiting at the edge of it; add one-way lanes in the rack aisles; grant swept shapes rather than 1 m blocks, so teams can pass closer.
 - Bursty-loss and bandwidth-capped radio models (Gilbert-Elliott).
 - Byte-budget sweep: hit rate and success against `tree_budget`.
 

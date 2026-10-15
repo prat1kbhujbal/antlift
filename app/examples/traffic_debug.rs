@@ -49,7 +49,14 @@ fn main() {
                 .and_then(|p| p.traffic_wait);
             if w != *last {
                 let o = s.swarm.world.object_state(k);
-                let what = w.map_or("moves on".to_string(), |j| format!("WAITS for {}", name(j)));
+                let what = w.map_or("moves on".to_string(), |j| {
+                    let parked = if s.swarm.delivered(j) {
+                        " (delivered)"
+                    } else {
+                        ""
+                    };
+                    format!("WAITS for {}{parked}", name(j))
+                });
                 println!(
                     "t={:6.1} {} {what} at ({:.1},{:.1})",
                     s.t(),

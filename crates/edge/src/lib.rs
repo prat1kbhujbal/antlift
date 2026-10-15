@@ -614,8 +614,10 @@ impl EdgeServer {
                 continue;
             }
             // Robots of a delivered team that report they're at the end of
-            // their plan are parked: they keep holding without a lease.
-            let parked = self.teams[team].delivered && r.reported_node == r.end_node;
+            // their plan, or not gripping at all, are parked: they keep
+            // holding (or standing by) without a lease.
+            let parked =
+                self.teams[team].delivered && (r.reported_node == r.end_node || !r.attached);
             if current && (since < self.cfg.refresh || parked) {
                 continue;
             }
@@ -1446,6 +1448,8 @@ impl EdgeServer {
             self.teams[k].fresh_route = true;
             self.plan_team(k);
         }
+        // A deadlock reroute's floor to avoid applies to both passes above.
+        self.teams[k].avoid.clear();
         self.stats.last_plan_us = t0.elapsed().as_micros();
     }
 
@@ -1480,7 +1484,7 @@ impl EdgeServer {
         let mut with_others = s.obstacles.clone();
         with_others.extend_from_slice(&others);
         // Breaking a deadlock: keep off the floor the other teams hold.
-        let avoid = std::mem::take(&mut self.teams[k].avoid);
+        let avoid = self.teams[k].avoid.clone();
         with_others.extend_from_slice(&avoid);
         // If there's no way round, somewhere nearby to get out of the way.
         let make_way = if avoid.is_empty() || self.teams[k].detour.is_some() {
